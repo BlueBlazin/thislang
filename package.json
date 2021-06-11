@@ -1,0 +1,22 @@
+{
+  "name": "thislang",
+  "version": "0.0.1",
+  "description": "An implementation of a subset of Javascript in that subset of Javascript.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BlueBlazin/thislang.git"
+  },
+  "keywords": [
+    "javascript"
+  ],
+  "author": "Sanjeet N. Dasharath",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/BlueBlazin/thislang/issues"
+  },
+  "homepage": "https://github.com/BlueBlazin/thislang#readme"
+}
