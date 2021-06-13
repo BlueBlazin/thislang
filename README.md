@@ -17,6 +17,7 @@ Thislang is an implementation of a subset of Javascript in that subset of Javasc
     -   null
 -   Simple Objects
 -   Prototypal Inheritance
+-   Function declarations
 -   Function expressions (lambdas)
 -   Conditionals
 -   `let` variables
