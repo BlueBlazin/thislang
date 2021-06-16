@@ -3,7 +3,8 @@
 //======================================================================
 
 // flag for debug logging
-let DEBUG = true;
+let DEBUG_VM = true;
+let DEBUG_PARSER = true;
 
 let STACK_MAX = 1024;
 
@@ -31,8 +32,8 @@ let initArray = function (size, fillValue) {
     return arr;
 };
 
-let dbg = function () {
-    if (DEBUG) {
+let dbg = function (flag, arguments) {
+    if (flag) {
         console.log(...arguments);
     }
 };
@@ -463,6 +464,7 @@ function Parser(source) {
 }
 
 Parser.prototype.expression = function () {
+    dbg(DEBUG_PARSER, ["expression"]);
     let expr = this.assignmentExpr();
 
     let nextToken = this.peek(0);
@@ -477,7 +479,7 @@ Parser.prototype.expression = function () {
             return token.type === TokenType.PUNCTUATOR && token.value === ",";
         }
     
-        let exprs = this.parseWithWhile(parseFn, predicate);
+        let exprs = this.parseWithWhile(parseFn.bind(this), predicate);
 
         exprs.unshift(expr);
         
@@ -494,6 +496,7 @@ AssignmentExpression:
     LeftHandSideExpression AssignmentOperator AssignmentExpression
  */
 Parser.prototype.assignmentExpr = function () {
+    dbg(DEBUG_PARSER, ["assignmentExpr"]);
     let lhs = this.conditionalExpr();
 
     let nextToken = this.peek(0);
@@ -523,6 +526,7 @@ Parser.prototype.assignmentExpr = function () {
 };
 
 Parser.prototype.conditionalExpr = function () {
+    dbg(DEBUG_PARSER, ["conditionalExpr"]);
     let expr = this.binaryExpr();
 
     let nextToken = this.peek(0);
@@ -552,12 +556,14 @@ Parser.prototype.conditionalExpr = function () {
 
 /** Parse binary expressions using precedence climbing */
 Parser.prototype.binaryExpr = function () {
+    dbg(DEBUG_PARSER, ["binaryExpr"]);
     let lhs = this.unaryExpr();
 
     return this.precedenceClimbing(lhs, 1);
 };
 
 Parser.prototype.precedenceClimbing = function (lhs, precedence) {
+    dbg(DEBUG_PARSER, ["precedenceClimbing"]);
     let nextToken = this.peek(0);
 
     while (
@@ -573,6 +579,7 @@ Parser.prototype.precedenceClimbing = function (lhs, precedence) {
             this.precedence(nextToken) > this.precedence(op)
         ) {
             rhs = this.precedenceClimbing(rhs, this.precedence(nextToken));
+            nextToken = this.peek(0);
         }
 
         lhs = {
@@ -588,6 +595,7 @@ Parser.prototype.precedenceClimbing = function (lhs, precedence) {
 };
 
 Parser.prototype.isBinaryOp = function (token) {
+    dbg(DEBUG_PARSER, ["isBinaryOp"]);
     if (token.type !== TokenType.PUNCTUATOR) {
         return token.type === TokenType.KEYWORD && token.value === "instanceof";
     }
@@ -620,6 +628,7 @@ Parser.prototype.isBinaryOp = function (token) {
 };
 
 Parser.prototype.precedence = function (token) {
+    dbg(DEBUG_PARSER, ["precedence"]);
     if (token.type !== TokenType.PUNCTUATOR) {
         if (token.type === TokenType.KEYWORD && token.value === "instanceof") {
             return 7;
@@ -665,6 +674,7 @@ Parser.prototype.precedence = function (token) {
 };
 
 Parser.prototype.unaryExpr = function () {
+    dbg(DEBUG_PARSER, ["unaryExpr"]);
     let nextToken = this.peek(0);
 
     if (this.isUnaryOp(nextToken)) {
@@ -684,6 +694,7 @@ Parser.prototype.unaryExpr = function () {
 };
 
 Parser.prototype.isUnaryOp = function (token) {
+    dbg(DEBUG_PARSER, ["isUnaryOp"]);
     if (
         token.type !== TokenType.KEYWORD &&
         token.type !== TokenType.PUNCTUATOR
@@ -705,6 +716,7 @@ Parser.prototype.isUnaryOp = function (token) {
 };
 
 Parser.prototype.updateExpr = function () {
+    dbg(DEBUG_PARSER, ["updateExpr"]);
     let nextToken = this.peek(0);
 
     if (
@@ -749,6 +761,7 @@ Parser.prototype.updateExpr = function () {
 
 
 Parser.prototype.leftHandSideExpr = function () {
+    dbg(DEBUG_PARSER, ["leftHandSideExpr"]);
     let nextToken = this.peek(0);
 
     if (nextToken.type === TokenType.KEYWORD && nextToken.value === "new") {
@@ -759,6 +772,7 @@ Parser.prototype.leftHandSideExpr = function () {
 };
 
 Parser.prototype.newExpr = function () {
+    dbg(DEBUG_PARSER, ["newExpr"]);
     let nextToken = this.advance();
 
     let callee = this.memberExpr();
@@ -769,12 +783,14 @@ Parser.prototype.newExpr = function () {
 };
 
 Parser.prototype.callExpr = function () {
+    dbg(DEBUG_PARSER, ["callExpr"]);
     let expr = this.memberExpr();
 
     return this.callTail(expr);
 };
 
 Parser.prototype.memberExpr = function () {
+    dbg(DEBUG_PARSER, ["memberExpr"]);
     let expr = this.primary();
 
     while (true) {
@@ -796,19 +812,20 @@ Parser.prototype.memberExpr = function () {
 };
 
 Parser.prototype.callTail = function (expr) {
+    dbg(DEBUG_PARSER, ["callTail"]);
     while (true) {
         let nextToken = this.peek(0);
 
-        if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === "[") {
+        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "[") {
             this.advance();
             let property = this.expression();
             this.expect(TokenType.PUNCTUATOR, "]");
             expr = { type: AstType.COMPUTED_MEMBER_EXPR, object: expr, property: property, line: expr.line };
-        } else if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === ".") {
+        } else if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ".") {
             this.advance();
             let property = this.identifier();
             expr = { type: AstType.STATIC_MEMBER_EXPR, object: expr, property: property, line: expr.line };
-        } else if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === "(") {
+        } else if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "(") {
             let arguments = this.arguments();
             expr = { type: AstType.CALL_EXPR, callee: expr, arguments: arguments, line: expr.line };
         } else {
@@ -818,6 +835,7 @@ Parser.prototype.callTail = function (expr) {
 };
 
 Parser.prototype.arguments = function () {
+    dbg(DEBUG_PARSER, ["arguments"]);
     // consume `(`
     this.advance();
 
@@ -840,7 +858,7 @@ Parser.prototype.arguments = function () {
         return token.value !== ")" && token.value !== "...";
     }
 
-    let arguments = this.parseWithWhile(parseFn, predicate);
+    let arguments = this.parseWithWhile(parseFn.bind(this), predicate);
 
     let nextToken = this.peek(0);
     if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "...") {
@@ -857,6 +875,7 @@ Parser.prototype.arguments = function () {
 
 /** Primary Expression */
 Parser.prototype.primary = function () {
+    dbg(DEBUG_PARSER, ["primary"]);
     let token = this.peek(0);
 
     switch (token.type) {
@@ -891,6 +910,7 @@ Parser.prototype.primary = function () {
 };
 
 Parser.prototype.object = function () {
+    dbg(DEBUG_PARSER, ["object"]);
     // consume `{` and get line
     let line = this.advance().line;
 
@@ -899,22 +919,24 @@ Parser.prototype.object = function () {
         this.expect(TokenType.PUNCTUATOR, ":");
         let value = this.assignmentExpr();
 
-        if (token.type === TokenType.PUNCTUATOR && token.value === ",") {
+        let nextToken = this.peek(0);
+
+        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
             this.advance();
         } else {
-            if (token.type !== TokenType.PUNCTUATOR || token.value !== "}") {
+            if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== "}") {
                 this.panic();
             }
         }
 
-        return { name: name, value: value, line: line };
+        return { name: name, value: value, line: name.line };
     }
 
     function predicate(token) {
         return token.type !== TokenType.PUNCTUATOR || token.value !== "}";
     }
 
-    let properties = this.parseWithWhile(parseFn, predicate);
+    let properties = this.parseWithWhile(parseFn.bind(this), predicate);
 
     // consume `}`
     this.expect(TokenType.PUNCTUATOR, "}");
@@ -923,7 +945,8 @@ Parser.prototype.object = function () {
 };
 
 Parser.prototype.propertyName = function () {
-    let token = this.peek();
+    dbg(DEBUG_PARSER, ["propertyName"]);
+    let token = this.peek(0);
 
     switch (token.type) {
         case TokenType.IDENTIFIER:
@@ -937,17 +960,18 @@ Parser.prototype.propertyName = function () {
 };
 
 Parser.prototype.array = function () {
+    dbg(DEBUG_PARSER, ["array"]);
     // consume `[` and get line
     let line = this.advance().line;
 
     function parseFn() {
         let element = this.assignmentExpr();
-        let token = this.peek();
+        let nextToken = this.peek(0);
 
-        if (token.type === TokenType.PUNCTUATOR && token.value === ",") {
+        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
             this.advance();
         } else {
-            if (token.type !== TokenType.PUNCTUATOR || token.value !== "]") {
+            if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== "]") {
                 this.panic();
             }
         }
@@ -959,7 +983,7 @@ Parser.prototype.array = function () {
         return token.type !== TokenType.PUNCTUATOR || token.value !== "]";
     }
 
-    let elements = this.parseWithWhile(parseFn, predicate);
+    let elements = this.parseWithWhile(parseFn.bind(this), predicate);
 
     // consume `]`
     this.expect(TokenType.PUNCTUATOR, "]");
@@ -968,6 +992,7 @@ Parser.prototype.array = function () {
 };
 
 Parser.prototype.literal = function () {
+    dbg(DEBUG_PARSER, ["literal"]);
     let token = this.advance();
 
     switch (token.type) {
@@ -995,11 +1020,13 @@ Parser.prototype.literal = function () {
 };
 
 Parser.prototype.identifier = function () {
+    dbg(DEBUG_PARSER, ["identifier"]);
     let token = this.advance();
     return { type: AstType.IDENTIFIER, value: token.value, line: token.line };
 };
 
 Parser.prototype.parseWithWhile = function (parseFn, predicate) {
+    dbg(DEBUG_PARSER, ["parseWithWhile"]);
     let nodes = [];
 
     while (true) {
@@ -1142,20 +1169,10 @@ Vm.prototype.pop = function () {
 //======================================================================
 
 (function () {
-    let source = `
-        for (let x = 0; x < foobar.length; x++) {
-            this.baz(x);
-            console.log(true);
-        }
-    `;
+    let source = `x.y[0].z()[7].15()`;
 
-    let tokenizer = new Tokenizer(source);
-
-    while (true) {
-        let token = tokenizer.next();
-        console.log(token);
-        if (token.type === TokenType.EOF) {
-            break;
-        }
-    }
+    let parser = new Parser(source);
+    let ast = parser.expression();
+    console.log(source);
+    console.log(JSON.stringify(ast, null, "  "));
 })();
