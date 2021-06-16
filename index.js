@@ -1,24 +1,24 @@
-//==================================================
+//======================================================================
 // Constants
-//==================================================
+//======================================================================
 
 // flag for debug logging
 let DEBUG = true;
 
 let STACK_MAX = 1024;
 
-//==================================================
+//======================================================================
 //  Bytecode
-//==================================================
+//======================================================================
 
 let Opcodes = {
     POP: 0x00,
     LOG: 0x01,
 };
 
-//==================================================
+//======================================================================
 // Helpers
-//==================================================
+//======================================================================
 
 /** Returns an array of specified size filled with specified value */
 let initArray = function (size, fillValue) {
@@ -37,9 +37,9 @@ let dbg = function () {
     }
 };
 
-//==================================================
+//======================================================================
 // Tokenizer
-//==================================================
+//======================================================================
 
 /** Token type enum */
 let TokenType = {
@@ -426,9 +426,9 @@ Tokenizer.prototype.matches = function (c) {
     return null;
 };
 
-//==================================================
+//======================================================================
 // Ast
-//==================================================
+//======================================================================
 
 /** Abstract Syntax Tree type enum */
 let AstType = {
@@ -439,20 +439,370 @@ let AstType = {
     IDENTIFIER: "IDENTIFIER",
     ARRAY: "ARRAY",
     OBJECT: "OBJECT",
-    FUNCTION: "FUNCTION",
+    FUNCTION_EXPR: "FUNCTION_EXPR",
+    CONDITIONAL_EXPR: "CONDITIONAL_EXPR",
+    BINARY_EXPR: "BINARY_EXPR",
+    UNARY_EXPR: "UNARY_EXPR",
+    UPDATE_EXPR: "UPDATE_EXPR",
+    NEW_EXPR: "NEW_EXPR",
+    COMPUTED_MEMBER_EXPR: "COMPUTED_MEMBER_EXPR",
+    STATIC_MEMBER_EXPR: "STATIC_MEMBER_EXPR",
+    CALL_EXPR: "CALL_EXPR",
+    SPREAD: "SPREAD",
 };
 
-//==================================================
+//======================================================================
 // Parser
-//==================================================
+//======================================================================
 
 function Parser(source) {
     this.tokenizer = new Tokenizer(source);
     this.queue = [];
 }
 
-Parser.prototype.assignmentExpression = function () {
-    throw Error("unimplemented");
+/**
+AssignmentExpression:
+    ConditionalExpression
+    LeftHandSideExpression = AssignmentExpression
+    LeftHandSideExpression AssignmentOperator AssignmentExpression
+ */
+Parser.prototype.assignmentExpr = function () {
+    let lhs = this.conditionalExpr();
+
+    // TODO
+};
+
+Parser.prototype.conditionalExpr = function () {
+    let expr = this.binaryExpr();
+
+    let nextToken = this.peek(0);
+
+    if (
+        nextToken.tokenType === TokenType.PUNCTUATOR &&
+        nextToken.value === "?"
+    ) {
+        // consume `?`
+        this.advance();
+        let consequent = this.assignmentExpr();
+        // consume `:`
+        this.expect(TokenType.PUNCTUATOR, ":");
+        let alternate = this.assignmentExpr();
+
+        return {
+            type: AstType.CONDITIONAL_EXPR,
+            test: expr,
+            consequent: consequent,
+            alternate: alternate,
+            line: expr.line,
+        };
+    } else {
+        return expr;
+    }
+};
+
+/** Parse binary expressions using precedence climbing */
+Parser.prototype.binaryExpr = function () {
+    let lhs = this.unaryExpr();
+
+    return this.precedenceClimbing(lhs, 1);
+};
+
+Parser.prototype.precedenceClimbing = function (lhs, precedence) {
+    let nextToken = this.peek(0);
+
+    while (
+        this.isBinaryOp(nextToken) &&
+        this.precedence(nextToken) >= precedence
+    ) {
+        let op = this.advance();
+        let rhs = this.unaryExpr();
+        nextToken = this.peek(0);
+
+        while (
+            this.isBinaryOp(nextToken) &&
+            this.precedence(nextToken) > this.precedence(op)
+        ) {
+            rhs = this.precedenceClimbing(rhs, this.precedence(nextToken));
+        }
+
+        lhs = {
+            type: AstType.BINARY_EXPR,
+            operator: op.value,
+            lhs: lhs,
+            rhs: rhs,
+            line: lhs.line,
+        };
+    }
+
+    return lhs;
+};
+
+Parser.prototype.isBinaryOp = function (token) {
+    if (token.type !== TokenType.PUNCTUATOR) {
+        return token.type === TokenType.KEYWORD && token.value === "instanceof";
+    }
+
+    switch (token.value) {
+        case "||":
+        case "&&":
+        case "|":
+        case "^":
+        case "&":
+        case "==":
+        case "!=":
+        case "===":
+        case "!==":
+        case "<":
+        case ">":
+        case "<=":
+        case ">=":
+        case "<<":
+        case ">>":
+        case "+":
+        case "-":
+        case "*":
+        case "/":
+        case "%":
+            return true;
+        default:
+            return false;
+    }
+};
+
+Parser.prototype.precedence = function (token) {
+    if (token.type !== TokenType.PUNCTUATOR) {
+        if (token.type === TokenType.KEYWORD && token.value === "instanceof") {
+            return 7;
+        }
+        return 0;
+    }
+
+    switch (token.value) {
+        case "||":
+            return 1;
+        case "&&":
+            return 2;
+        case "|":
+            return 3;
+        case "^":
+            return 4;
+        case "&":
+            return 5;
+        case "==":
+        case "!=":
+        case "===":
+        case "!==":
+            return 6;
+        case "<":
+        case ">":
+        case "<=":
+        case ">=":
+            return 7;
+        case "<<":
+        case ">>":
+            return 8;
+        case "+":
+        case "-":
+            return 9;
+        case "*":
+        case "/":
+            return 10;
+        case "%":
+            return 11;
+        default:
+            return 0;
+    }
+};
+
+Parser.prototype.unaryExpr = function () {
+    let nextToken = this.peek(0);
+
+    if (this.isUnaryOp(nextToken)) {
+        this.advance();
+
+        let argument = this.unaryExpr();
+
+        return {
+            type: AstType.UNARY_EXPR,
+            operator: nextToken.value,
+            argument: argument,
+            line: nextToken.line,
+        };
+    }
+
+    return this.updateExpr();
+};
+
+Parser.prototype.isUnaryOp = function (token) {
+    if (
+        token.type !== TokenType.KEYWORD &&
+        token.type !== TokenType.PUNCTUATOR
+    ) {
+        return false;
+    }
+
+    switch (token.value) {
+        case "!":
+        case "-":
+        case "delete":
+        case "typeof":
+        case "+":
+        case "~":
+            return true;
+        default:
+            return false;
+    }
+};
+
+Parser.prototype.updateExpr = function () {
+    let nextToken = this.peek(0);
+
+    if (
+        nextToken.type === TokenType.PUNCTUATOR &&
+        (nextToken.value === "--" || nextToken.value === "++")
+    ) {
+        // handle the prefix case (++x, --x)
+        this.advance();
+        let argument = this.unaryExpr();
+
+        return {
+            type: AstType.UPDATE_EXPR,
+            operator: nextToken.value,
+            argument: argument,
+            prefix: true,
+            line: nextToken.line,
+        };
+    } else {
+        // handle the postfix case (x++, x--) or non update expressions
+        let expr = this.leftHandSideExpr();
+
+        let nextToken = this.peek(0);
+
+        if (
+            nextToken.line === expr.line &&
+            nextToken.type === TokenType.PUNCTUATOR &&
+            (nextToken.value === "--" || nextToken.value === "++")
+        ) {
+            this.advance();
+            return {
+                type: AstType.UPDATE_EXPR,
+                operator: nextToken.value,
+                argument: expr,
+                prefix: false,
+                line: expr.line,
+            };
+        } else {
+            return expr;
+        }
+    }
+};
+
+
+Parser.prototype.leftHandSideExpr = function () {
+    let nextToken = this.peek(0);
+
+    if (nextToken.type === TokenType.KEYWORD && nextToken.value === "new") {
+        return this.newExpr();
+    } else {
+        return this.callExpr();
+    }
+};
+
+Parser.prototype.newExpr = function () {
+    let nextToken = this.advance();
+
+    let callee = this.memberExpr();
+    let arguments = this.arguments();
+    let expr = { type: AstType.NEW_EXPR, callee: callee, arguments: arguments, line: nextToken.line };
+
+    return this.callTail(expr);
+};
+
+Parser.prototype.callExpr = function () {
+    let expr = this.memberExpr();
+
+    return this.callTail(expr);
+};
+
+Parser.prototype.memberExpr = function () {
+    let expr = this.primary();
+
+    while (true) {
+        let nextToken = this.peek(0);
+
+        if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === "[") {
+            this.advance();
+            let property = this.expression();
+            this.expect(TokenType.PUNCTUATOR, "]");
+            expr = { type: AstType.COMPUTED_MEMBER_EXPR, object: expr, property: property, line: expr.line };
+        } else if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === ".") {
+            this.advance();
+            let property = this.identifier();
+            expr = { type: AstType.STATIC_MEMBER_EXPR, object: expr, property: property, line: expr.line };
+        } else {
+            return expr;
+        }
+    }
+};
+
+Parser.prototype.callTail = function (expr) {
+    while (true) {
+        let nextToken = this.peek(0);
+
+        if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === "[") {
+            this.advance();
+            let property = this.expression();
+            this.expect(TokenType.PUNCTUATOR, "]");
+            expr = { type: AstType.COMPUTED_MEMBER_EXPR, object: expr, property: property, line: expr.line };
+        } else if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === ".") {
+            this.advance();
+            let property = this.identifier();
+            expr = { type: AstType.STATIC_MEMBER_EXPR, object: expr, property: property, line: expr.line };
+        } else if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === "(") {
+            let arguments = this.arguments();
+            expr = { type: AstType.CALL_EXPR, callee: expr, arguments: arguments, line: expr.line };
+        } else {
+            return expr;
+        }
+    }
+};
+
+Parser.prototype.arguments = function () {
+    // consume `(`
+    this.advance();
+
+    function parseFn() {
+        let argument = this.assignmentExpr();
+
+        let nextToken = this.peek(0);
+        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+            this.advance();
+        } else {
+            if (nextToken.value !== ")" && nextToken.value !== "...") {
+                this.panic("Unexpected token " + nextToken.value);
+            }
+        }
+
+        return argument;
+    }
+
+    function predicate(token) {
+        return token.value !== ")" && token.value !== "...";
+    }
+
+    let arguments = this.parseWithWhile(parseFn, predicate);
+
+    let nextToken = this.peek(0);
+    if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "...") {
+        this.advance();
+        let argument = this.assignmentExpr();
+        arguments.push({ type: AstType.SPREAD, argument: argument, line: nextToken.line });
+    }
+
+    // consume `)`
+    this.expect(TokenType.PUNCTUATOR, ")");
+
+    return arguments;
 };
 
 /** Primary Expression */
@@ -490,12 +840,58 @@ Parser.prototype.primary = function () {
     }
 };
 
+Parser.prototype.object = function () {
+    // consume `{` and get line
+    let line = this.advance().line;
+
+    function parseFn() {
+        let name = this.propertyName();
+        this.expect(TokenType.PUNCTUATOR, ":");
+        let value = this.assignmentExpr();
+
+        if (token.type === TokenType.PUNCTUATOR && token.value === ",") {
+            this.advance();
+        } else {
+            if (token.type !== TokenType.PUNCTUATOR || token.value !== "}") {
+                this.panic();
+            }
+        }
+
+        return { name: name, value: value, line: line };
+    }
+
+    function predicate(token) {
+        return token.type !== TokenType.PUNCTUATOR || token.value !== "}";
+    }
+
+    let properties = this.parseWithWhile(parseFn, predicate);
+
+    // consume `}`
+    this.expect(TokenType.PUNCTUATOR, "}");
+
+    return { type: AstType.OBJECT, properties: properties, line: line };
+};
+
+Parser.prototype.propertyName = function () {
+    let token = this.peek();
+
+    switch (token.type) {
+        case TokenType.IDENTIFIER:
+            return this.identifier();
+        case TokenType.STRING:
+        case TokenType.NUMBER:
+            return this.literal();
+        default:
+            this.panic();
+    }
+};
+
 Parser.prototype.array = function () {
     // consume `[` and get line
     let line = this.advance().line;
 
     function parseFn() {
-        let element = this.assignmentExpression();
+        let element = this.assignmentExpr();
         let token = this.peek();
 
         if (token.type === TokenType.PUNCTUATOR && token.value === ",") {
@@ -603,13 +999,13 @@ Parser.prototype.panic = function () {
     throw Error("parser panicked");
 };
 
-//==================================================
+//======================================================================
 // Compiler
-//==================================================
+//======================================================================
 
-//==================================================
+//======================================================================
 // VM
-//==================================================
+//======================================================================
 
 function Vm(code) {
     // instruction pointer
@@ -691,9 +1087,9 @@ Vm.prototype.pop = function () {
     }
 };
 
-//==================================================
+//======================================================================
 // Main
-//==================================================
+//======================================================================
 
 (function () {
     let source = `
