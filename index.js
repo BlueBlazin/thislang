@@ -449,6 +449,8 @@ let AstType = {
     STATIC_MEMBER_EXPR: "STATIC_MEMBER_EXPR",
     CALL_EXPR: "CALL_EXPR",
     SPREAD: "SPREAD",
+    SEQUENCE_EXPR: "SEQUENCE_EXPR",
+    ASSIGNMENT_EXPR: "ASSIGNMENT_EXPR",
 };
 
 //======================================================================
@@ -460,6 +462,31 @@ function Parser(source) {
     this.queue = [];
 }
 
+Parser.prototype.expression = function () {
+    let expr = this.assignmentExpr();
+
+    let nextToken = this.peek(0);
+    if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+        function parseFn() {
+            // consume `,`
+            this.advance();
+            return this.assignmentExpr();
+        }
+    
+        function predicate(token) {
+            return token.type === TokenType.PUNCTUATOR && token.value === ",";
+        }
+    
+        let exprs = this.parseWithWhile(parseFn, predicate);
+
+        exprs.unshift(expr);
+        
+        return { type: AstType.SEQUENCE_EXPR, expressions: exprs, line: expr.line };
+    } else {
+        return expr;
+    }
+};
+
 /**
 AssignmentExpression:
     ConditionalExpression
@@ -469,7 +496,30 @@ AssignmentExpression:
 Parser.prototype.assignmentExpr = function () {
     let lhs = this.conditionalExpr();
 
-    // TODO
+    let nextToken = this.peek(0);
+
+    if (nextToken.type !== TokenType.PUNCTUATOR) {
+        return lhs;
+    }
+
+    switch (nextToken.value) {
+        case "=":
+        case "*=":
+        case "/=":
+        case "%=":
+        case "+=":
+        case "-=":
+        case "&=":
+        case "|=":
+            if (lhs.assign_type === "invalid") {
+                this.panic("Invalid assignment target.")
+            }
+            let op = this.advance().value;
+            let rhs = this.assignmentExpr();
+            return { type: AstType.ASSIGNMENT_EXPR, operator: op, left: lhs, right: rhs, line: lhs.line };
+        default:
+            return lhs;
+    }
 };
 
 Parser.prototype.conditionalExpr = function () {
