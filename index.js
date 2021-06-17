@@ -455,6 +455,9 @@ let AstType = {
     SEQUENCE_EXPR: "SEQUENCE_EXPR",
     ASSIGNMENT_EXPR: "ASSIGNMENT_EXPR",
     EXPRESSION_STMT: "EXPRESSION_STMT",
+    BLOCK_STMT: "BLOCK_STMT",
+    CONTINUE_STMT: "CONTINUE_STMT",
+    BREAK_STMT: "BREAK_STMT",
 };
 
 //======================================================================
@@ -465,6 +468,8 @@ function Parser(source) {
     this.tokenizer = new Tokenizer(source);
     this.queue = [];
     this.line = 0;
+    this.in_iteration = false;
+    this.in_switch = false;
 }
 
 //----------------------------------------------------------------------
@@ -514,7 +519,14 @@ Parser.prototype.statementOrDeclaration = function () {
 };
 
 Parser.prototype.blockStmt = function () {
-    //
+    // consume `{`
+    let line = this.advance().line;
+
+    let body = this.statementList();
+
+    this.expect(TokenType.PUNCTUATOR, "}");
+
+    return { type: AstType.BLOCK_STMT, body: body, line: line };
 };
 
 Parser.prototype.ifStmt = function () {
@@ -534,11 +546,17 @@ Parser.prototype.switchStmt = function () {
 };
 
 Parser.prototype.continueStmt = function () {
-    //
+    // consume `continue`
+    let line = this.advance().line;
+    this.expectSemicolon();
+    return { type: AstType.CONTINUE_STMT, line: line };
 };
 
 Parser.prototype.breakStmt = function () {
-    //
+    // consume `break`
+    let line = this.advance().line;
+    this.expectSemicolon();
+    return { type: AstType.BREAK_STMT, line: line };
 };
 
 Parser.prototype.returnStmt = function () {
