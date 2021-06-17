@@ -1,3 +1,5 @@
+"use strict";
+
 //======================================================================
 // Constants
 //======================================================================
@@ -32,9 +34,9 @@ let initArray = function (size, fillValue) {
     return arr;
 };
 
-let dbg = function (flag, arguments) {
+let dbg = function (flag, args) {
     if (flag) {
-        console.log(...arguments);
+        console.log(...args);
     }
 };
 
@@ -452,6 +454,7 @@ let AstType = {
     SPREAD: "SPREAD",
     SEQUENCE_EXPR: "SEQUENCE_EXPR",
     ASSIGNMENT_EXPR: "ASSIGNMENT_EXPR",
+    EXPRESSION_STMT: "EXPRESSION_STMT",
 };
 
 //======================================================================
@@ -461,7 +464,12 @@ let AstType = {
 function Parser(source) {
     this.tokenizer = new Tokenizer(source);
     this.queue = [];
+    this.line = 0;
 }
+
+//----------------------------------------------------------------------
+// Parser - statements & declarations
+//----------------------------------------------------------------------
 
 Parser.prototype.statementOrDeclaration = function () {
     let token = this.peek(0);
@@ -469,7 +477,7 @@ Parser.prototype.statementOrDeclaration = function () {
     if (token.type === TokenType.PUNCTUATOR) {
         switch (token.value) {
             case "{":
-                return this.block();
+                return this.blockStmt();
             default:
                 this.panic(token.value);
         }
@@ -477,10 +485,86 @@ Parser.prototype.statementOrDeclaration = function () {
 
     if (token.type === TokenType.KEYWORD) {
         switch (token.value) {
+            case "let":
+                return this.letDclr();
+            case "function":
+                return this.functionDclr();
+            case "if":
+                return this.ifStmt();
+            case "for":
+                return this.forStmt();
+            case "while":
+                return this.whileStmt();
+            case "switch":
+                return this.switchStmt();
+            case "continue":
+                return this.continueStmt();
+            case "break":
+                return this.breakStmt();
+            case "return":
+                return this.returnStmt();
+            case "throw":
+                return this.throwStmt();
             default:
                 this.panic(token.value);
         }
     }
+
+    return this.expressionStmt();
+};
+
+Parser.prototype.blockStmt = function () {
+    //
+};
+
+Parser.prototype.ifStmt = function () {
+    //
+};
+
+Parser.prototype.forStmt = function () {
+    //
+};
+
+Parser.prototype.whileStmt = function () {
+    //
+};
+
+Parser.prototype.switchStmt = function () {
+    //
+};
+
+Parser.prototype.continueStmt = function () {
+    //
+};
+
+Parser.prototype.breakStmt = function () {
+    //
+};
+
+Parser.prototype.returnStmt = function () {
+    //
+};
+
+Parser.prototype.throwStmt = function () {
+    //
+};
+
+Parser.prototype.functionDclr = function () {
+    //
+};
+
+Parser.prototype.letDclr = function () {
+    //
+};
+
+Parser.prototype.expressionStmt = function () {
+    let expression = this.expression();
+    this.expectSemicolon();
+    return {
+        type: AstType.EXPRESSION_STMT,
+        expression: expression,
+        line: expression.line,
+    };
 };
 
 Parser.prototype.statementList = function () {
@@ -488,8 +572,15 @@ Parser.prototype.statementList = function () {
         return token.type !== TokenType.PUNCTUATOR || token.value !== "}";
     }
 
-    return this.parseWithWhile(this.statementOrDeclaration.bind(this), predicate);
+    return this.parseWithWhile(
+        this.statementOrDeclaration.bind(this),
+        predicate
+    );
 };
+
+//----------------------------------------------------------------------
+// Parser - expressions
+//----------------------------------------------------------------------
 
 Parser.prototype.expression = function () {
     dbg(DEBUG_PARSER, ["expression"]);
@@ -502,27 +593,25 @@ Parser.prototype.expression = function () {
             this.advance();
             return this.assignmentExpr();
         }
-    
+
         function predicate(token) {
             return token.type === TokenType.PUNCTUATOR && token.value === ",";
         }
-    
+
         let exprs = this.parseWithWhile(parseFn.bind(this), predicate);
 
         exprs.unshift(expr);
-        
-        return { type: AstType.SEQUENCE_EXPR, expressions: exprs, line: expr.line };
+
+        return {
+            type: AstType.SEQUENCE_EXPR,
+            expressions: exprs,
+            line: expr.line,
+        };
     } else {
         return expr;
     }
 };
 
-/**
-AssignmentExpression:
-    ConditionalExpression
-    LeftHandSideExpression = AssignmentExpression
-    LeftHandSideExpression AssignmentOperator AssignmentExpression
- */
 Parser.prototype.assignmentExpr = function () {
     dbg(DEBUG_PARSER, ["assignmentExpr"]);
     let lhs = this.conditionalExpr();
@@ -543,11 +632,17 @@ Parser.prototype.assignmentExpr = function () {
         case "&=":
         case "|=":
             if (lhs.assign_type === "invalid") {
-                this.panic("Invalid assignment target.")
+                this.panic("Invalid assignment target.");
             }
             let op = this.advance().value;
             let rhs = this.assignmentExpr();
-            return { type: AstType.ASSIGNMENT_EXPR, operator: op, left: lhs, right: rhs, line: lhs.line };
+            return {
+                type: AstType.ASSIGNMENT_EXPR,
+                operator: op,
+                left: lhs,
+                right: rhs,
+                line: lhs.line,
+            };
         default:
             return lhs;
     }
@@ -559,10 +654,7 @@ Parser.prototype.conditionalExpr = function () {
 
     let nextToken = this.peek(0);
 
-    if (
-        nextToken.type === TokenType.PUNCTUATOR &&
-        nextToken.value === "?"
-    ) {
+    if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "?") {
         // consume `?`
         this.advance();
         let consequent = this.assignmentExpr();
@@ -769,7 +861,7 @@ Parser.prototype.updateExpr = function () {
         let nextToken = this.peek(0);
 
         if (
-            nextToken.line === expr.line &&
+            nextToken.line === this.line &&
             nextToken.type === TokenType.PUNCTUATOR &&
             (nextToken.value === "--" || nextToken.value === "++")
         ) {
@@ -787,7 +879,6 @@ Parser.prototype.updateExpr = function () {
     }
 };
 
-
 Parser.prototype.leftHandSideExpr = function () {
     dbg(DEBUG_PARSER, ["leftHandSideExpr"]);
     let nextToken = this.peek(0);
@@ -804,8 +895,13 @@ Parser.prototype.newExpr = function () {
     let nextToken = this.advance();
 
     let callee = this.memberExpr();
-    let arguments = this.arguments();
-    let expr = { type: AstType.NEW_EXPR, callee: callee, arguments: arguments, line: nextToken.line };
+    let args = this.callArguments();
+    let expr = {
+        type: AstType.NEW_EXPR,
+        callee: callee,
+        arguments: args,
+        line: nextToken.line,
+    };
 
     return this.callTail(expr);
 };
@@ -824,15 +920,31 @@ Parser.prototype.memberExpr = function () {
     while (true) {
         let nextToken = this.peek(0);
 
-        if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === "[") {
+        if (
+            nextToken.type !== TokenType.PUNCTUATOR &&
+            nextToken.value === "["
+        ) {
             this.advance();
             let property = this.expression();
             this.expect(TokenType.PUNCTUATOR, "]");
-            expr = { type: AstType.COMPUTED_MEMBER_EXPR, object: expr, property: property, line: expr.line };
-        } else if (nextToken.type !== TokenType.PUNCTUATOR && nextToken.value === ".") {
+            expr = {
+                type: AstType.COMPUTED_MEMBER_EXPR,
+                object: expr,
+                property: property,
+                line: expr.line,
+            };
+        } else if (
+            nextToken.type !== TokenType.PUNCTUATOR &&
+            nextToken.value === "."
+        ) {
             this.advance();
             let property = this.identifier();
-            expr = { type: AstType.STATIC_MEMBER_EXPR, object: expr, property: property, line: expr.line };
+            expr = {
+                type: AstType.STATIC_MEMBER_EXPR,
+                object: expr,
+                property: property,
+                line: expr.line,
+            };
         } else {
             return expr;
         }
@@ -844,25 +956,49 @@ Parser.prototype.callTail = function (expr) {
     while (true) {
         let nextToken = this.peek(0);
 
-        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "[") {
+        if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === "["
+        ) {
             this.advance();
             let property = this.expression();
             this.expect(TokenType.PUNCTUATOR, "]");
-            expr = { type: AstType.COMPUTED_MEMBER_EXPR, object: expr, property: property, line: expr.line };
-        } else if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ".") {
+            expr = {
+                type: AstType.COMPUTED_MEMBER_EXPR,
+                object: expr,
+                property: property,
+                line: expr.line,
+            };
+        } else if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === "."
+        ) {
             this.advance();
             let property = this.identifier();
-            expr = { type: AstType.STATIC_MEMBER_EXPR, object: expr, property: property, line: expr.line };
-        } else if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "(") {
-            let arguments = this.arguments();
-            expr = { type: AstType.CALL_EXPR, callee: expr, arguments: arguments, line: expr.line };
+            expr = {
+                type: AstType.STATIC_MEMBER_EXPR,
+                object: expr,
+                property: property,
+                line: expr.line,
+            };
+        } else if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === "("
+        ) {
+            let args = this.callArguments();
+            expr = {
+                type: AstType.CALL_EXPR,
+                callee: expr,
+                arguments: args,
+                line: expr.line,
+            };
         } else {
             return expr;
         }
     }
 };
 
-Parser.prototype.arguments = function () {
+Parser.prototype.callArguments = function () {
     dbg(DEBUG_PARSER, ["arguments"]);
     // consume `(`
     this.advance();
@@ -871,7 +1007,10 @@ Parser.prototype.arguments = function () {
         let argument = this.assignmentExpr();
 
         let nextToken = this.peek(0);
-        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+        if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === ","
+        ) {
             this.advance();
         } else {
             if (nextToken.value !== ")" && nextToken.value !== "...") {
@@ -886,19 +1025,23 @@ Parser.prototype.arguments = function () {
         return token.value !== ")" && token.value !== "...";
     }
 
-    let arguments = this.parseWithWhile(parseFn.bind(this), predicate);
+    let args = this.parseWithWhile(parseFn.bind(this), predicate);
 
     let nextToken = this.peek(0);
     if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "...") {
         this.advance();
         let argument = this.assignmentExpr();
-        arguments.push({ type: AstType.SPREAD, argument: argument, line: nextToken.line });
+        args.push({
+            type: AstType.SPREAD,
+            argument: argument,
+            line: nextToken.line,
+        });
     }
 
     // consume `)`
     this.expect(TokenType.PUNCTUATOR, ")");
 
-    return arguments;
+    return args;
 };
 
 /** Primary Expression */
@@ -953,7 +1096,13 @@ Parser.prototype.function = function () {
     let params = this.parameters();
     let body = this.functionBody();
 
-    return { type: AstType.FUNCTION_EXPR, id: id, params: params, body: body, line: line };
+    return {
+        type: AstType.FUNCTION_EXPR,
+        id: id,
+        params: params,
+        body: body,
+        line: line,
+    };
 };
 
 Parser.prototype.parameters = function () {
@@ -964,10 +1113,16 @@ Parser.prototype.parameters = function () {
         let param = this.identifier();
 
         let nextToken = this.peek(0);
-        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+        if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === ","
+        ) {
             this.advance();
         } else {
-            if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== ")") {
+            if (
+                nextToken.type !== TokenType.PUNCTUATOR ||
+                nextToken.value !== ")"
+            ) {
                 this.panic(nextToken.value);
             }
         }
@@ -1008,10 +1163,16 @@ Parser.prototype.object = function () {
 
         let nextToken = this.peek(0);
 
-        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+        if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === ","
+        ) {
             this.advance();
         } else {
-            if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== "}") {
+            if (
+                nextToken.type !== TokenType.PUNCTUATOR ||
+                nextToken.value !== "}"
+            ) {
                 this.panic(nextToken.value);
             }
         }
@@ -1055,10 +1216,16 @@ Parser.prototype.array = function () {
         let element = this.assignmentExpr();
         let nextToken = this.peek(0);
 
-        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+        if (
+            nextToken.type === TokenType.PUNCTUATOR &&
+            nextToken.value === ","
+        ) {
             this.advance();
         } else {
-            if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== "]") {
+            if (
+                nextToken.type !== TokenType.PUNCTUATOR ||
+                nextToken.value !== "]"
+            ) {
                 this.panic(nextToken.value);
             }
         }
@@ -1112,6 +1279,32 @@ Parser.prototype.identifier = function () {
     return { type: AstType.IDENTIFIER, value: token.value, line: token.line };
 };
 
+//----------------------------------------------------------------------
+// Parser - utils
+//----------------------------------------------------------------------
+
+Parser.prototype.expectSemicolon = function () {
+    let nextToken = this.peek(0);
+
+    if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ";") {
+        this.advance();
+    } else if (nextToken.line === this.line) {
+        // only perform automatic semicolon insertion if next token is `}`
+        if (
+            (nextToken.type === TokenType.PUNCTUATOR &&
+                nextToken.value === "}") ||
+            nextToken.type === TokenType.EOF
+        ) {
+            this.advance();
+        } else {
+            this.panic(nextToken);
+        }
+    } else {
+        // perform automatic semicolon insertion
+        this.advance();
+    }
+};
+
 Parser.prototype.parseWithWhile = function (parseFn, predicate) {
     dbg(DEBUG_PARSER, ["parseWithWhile"]);
     let nodes = [];
@@ -1130,7 +1323,7 @@ Parser.prototype.parseWithWhile = function (parseFn, predicate) {
 /** Peek next + nth token and return */
 Parser.prototype.peek = function (n) {
     while (this.queue.length <= n) {
-        this.queue.push(this.advance());
+        this.queue.push(this.nextToken());
     }
 
     return this.queue[n];
@@ -1150,8 +1343,17 @@ Parser.prototype.expect = function (tokenType, value) {
     return nextToken;
 };
 
-/** Get next token */
+/** Get next token and update current line */
 Parser.prototype.advance = function () {
+    let token = this.nextToken();
+
+    this.line = token.line;
+
+    return token;
+};
+
+/** Get next token */
+Parser.prototype.nextToken = function () {
     if (this.queue.length > 0) {
         return this.queue.shift();
     }
@@ -1195,9 +1397,9 @@ Vm.prototype.run = function () {
     }
 };
 
-//--------------------------------------------------
+//----------------------------------------------------------------------
 // VM - instructions
-//--------------------------------------------------
+//----------------------------------------------------------------------
 
 /** Pop value from top of stack and discard it */
 Vm.prototype.opPop = function () {
@@ -1216,9 +1418,9 @@ Vm.prototype.opLog = function () {
     console.log(value);
 };
 
-//--------------------------------------------------
+//----------------------------------------------------------------------
 // VM - utils
-//--------------------------------------------------
+//----------------------------------------------------------------------
 
 /** Fetch next opcode */
 Vm.prototype.fetch = function () {
@@ -1256,10 +1458,7 @@ Vm.prototype.pop = function () {
 //======================================================================
 
 (function () {
-    let source = `
-        function foo(x, y, z) {
-        }
-    `;
+    let source = `x++`;
 
     // let tokenizer = new Tokenizer(source);
     // let nextToken;
@@ -1272,7 +1471,7 @@ Vm.prototype.pop = function () {
     // }
 
     let parser = new Parser(source);
-    let ast = parser.expression();
+    let ast = parser.statementOrDeclaration();
     console.log(source);
     console.log(JSON.stringify(ast, null, "  "));
 })();
