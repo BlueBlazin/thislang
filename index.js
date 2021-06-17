@@ -463,6 +463,34 @@ function Parser(source) {
     this.queue = [];
 }
 
+Parser.prototype.statementOrDeclaration = function () {
+    let token = this.peek(0);
+
+    if (token.type === TokenType.PUNCTUATOR) {
+        switch (token.value) {
+            case "{":
+                return this.block();
+            default:
+                this.panic(token.value);
+        }
+    }
+
+    if (token.type === TokenType.KEYWORD) {
+        switch (token.value) {
+            default:
+                this.panic(token.value);
+        }
+    }
+};
+
+Parser.prototype.statementList = function () {
+    function predicate(token) {
+        return token.type !== TokenType.PUNCTUATOR || token.value !== "}";
+    }
+
+    return this.parseWithWhile(this.statementOrDeclaration.bind(this), predicate);
+};
+
 Parser.prototype.expression = function () {
     dbg(DEBUG_PARSER, ["expression"]);
     let expr = this.assignmentExpr();
@@ -532,7 +560,7 @@ Parser.prototype.conditionalExpr = function () {
     let nextToken = this.peek(0);
 
     if (
-        nextToken.tokenType === TokenType.PUNCTUATOR &&
+        nextToken.type === TokenType.PUNCTUATOR &&
         nextToken.value === "?"
     ) {
         // consume `?`
@@ -896,17 +924,76 @@ Parser.prototype.primary = function () {
                 this.expect(")");
                 return expr;
             } else {
-                this.panic();
+                this.panic(token.value);
             }
         case TokenType.KEYWORD:
             if (token.value === "function") {
                 return this.function();
             } else {
-                this.panic();
+                this.panic(token.value);
             }
         default:
-            this.panic();
+            this.panic(token.value);
     }
+};
+
+Parser.prototype.function = function () {
+    dbg(DEBUG_PARSER, ["function"]);
+    // consume `function`
+    let line = this.advance().line;
+
+    // function names are optional
+    let id = null;
+    let nextToken = this.peek(0);
+
+    if (nextToken.type === TokenType.IDENTIFIER) {
+        id = this.identifier();
+    }
+
+    let params = this.parameters();
+    let body = this.functionBody();
+
+    return { type: AstType.FUNCTION_EXPR, id: id, params: params, body: body, line: line };
+};
+
+Parser.prototype.parameters = function () {
+    dbg(DEBUG_PARSER, ["parameters"]);
+    this.expect(TokenType.PUNCTUATOR, "(");
+
+    function parseFn() {
+        let param = this.identifier();
+
+        let nextToken = this.peek(0);
+        if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ",") {
+            this.advance();
+        } else {
+            if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== ")") {
+                this.panic(nextToken.value);
+            }
+        }
+
+        return param;
+    }
+
+    function predicate(token) {
+        return token.type !== TokenType.PUNCTUATOR || token.value !== ")";
+    }
+
+    let parameters = this.parseWithWhile(parseFn.bind(this), predicate);
+    this.expect(TokenType.PUNCTUATOR, ")");
+
+    return parameters;
+};
+
+Parser.prototype.functionBody = function () {
+    dbg(DEBUG_PARSER, ["functionBody"]);
+    this.expect(TokenType.PUNCTUATOR, "{");
+
+    let body = this.statementList();
+
+    this.expect(TokenType.PUNCTUATOR, "}");
+
+    return body;
 };
 
 Parser.prototype.object = function () {
@@ -925,7 +1012,7 @@ Parser.prototype.object = function () {
             this.advance();
         } else {
             if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== "}") {
-                this.panic();
+                this.panic(nextToken.value);
             }
         }
 
@@ -955,7 +1042,7 @@ Parser.prototype.propertyName = function () {
         case TokenType.NUMBER:
             return this.literal();
         default:
-            this.panic();
+            this.panic(token.value);
     }
 };
 
@@ -972,7 +1059,7 @@ Parser.prototype.array = function () {
             this.advance();
         } else {
             if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== "]") {
-                this.panic();
+                this.panic(nextToken.value);
             }
         }
 
@@ -1015,7 +1102,7 @@ Parser.prototype.literal = function () {
                 line: token.line,
             };
         default:
-            this.panic();
+            this.panic(token.value);
     }
 };
 
@@ -1057,7 +1144,7 @@ Parser.prototype.expect = function (tokenType, value) {
         nextToken.type !== tokenType ||
         (value !== null && value !== nextToken.value)
     ) {
-        this.panic();
+        this.panic(nextToken.value);
     }
 
     return nextToken;
@@ -1072,8 +1159,8 @@ Parser.prototype.advance = function () {
     return this.tokenizer.next();
 };
 
-Parser.prototype.panic = function () {
-    throw Error("parser panicked");
+Parser.prototype.panic = function (msg) {
+    throw Error("parser panicked on: " + msg);
 };
 
 //======================================================================
@@ -1169,7 +1256,20 @@ Vm.prototype.pop = function () {
 //======================================================================
 
 (function () {
-    let source = `x.y[0].z()[7].15()`;
+    let source = `
+        function foo(x, y, z) {
+        }
+    `;
+
+    // let tokenizer = new Tokenizer(source);
+    // let nextToken;
+    // while (true) {
+    //     nextToken = tokenizer.next();
+    //     console.log(nextToken);
+    //     if (nextToken.type === TokenType.EOF) {
+    //         break;
+    //     }
+    // }
 
     let parser = new Parser(source);
     let ast = parser.expression();
