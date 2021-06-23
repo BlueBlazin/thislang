@@ -1728,17 +1728,18 @@ Parser.prototype.panic = function (msg) {
 //  Bytecode
 //==================================================================
 
+// prettier-ignore
 let Opcodes = {
-    POP: 0x00,
-    PUSH_CONSTANT: 0x01,
-    PUSH_TRUE: 0x02,
-    PUSH_FALSE: 0x03,
-    PUSH_NULL: 0x04,
-    PUSH_THIS: 0x05,
-    ADD: 0x06,
-    SUB: 0x07,
-    MUL: 0x08,
-    DIV: 0x09,
+    POP:             0x00,
+    PUSH_CONSTANT:   0x01,
+    PUSH_TRUE:       0x02,
+    PUSH_FALSE:      0x03,
+    PUSH_NULL:       0x04,
+    PUSH_THIS:       0x05,
+    ADD:             0x06,
+    SUB:             0x07,
+    MUL:             0x08,
+    DIV:             0x09,
 };
 
 //==================================================================
@@ -1787,14 +1788,18 @@ Compiler.prototype.stmtOrDclr = function (ast) {
 };
 
 Compiler.prototype.expressionStmt = function (ast) {
+    // compile the expression
     this.expression(ast.expression);
+    // pop the last value off the stack as statements should leave
+    // the stack clean at the end
+    this.emitByte(Opcodes.POP);
 };
 
 Compiler.prototype.expression = function (ast) {
     switch (ast.type) {
         case AstType.NUMBER:
         case AstType.STRING:
-            return this.value(ast);
+            return this.number(ast);
         case AstType.BOOLEAN:
             return this.boolean(ast);
         case AstType.NULL:
@@ -1863,7 +1868,7 @@ Compiler.prototype.addConstant = function (value) {
         this.panic("Too many constants.");
     }
 
-    this.function.constants.push(value | 0x0);
+    this.function.constants.push(value);
     return this.function.constants.length - 1;
 };
 
@@ -1879,57 +1884,66 @@ Compiler.prototype.emitBytes = function (bytes) {
 // Disassembler
 //==================================================================
 
-function dis(code, constants) {
-    let i = 0;
-    let disassembly = [];
+function simpleInstr(name, state) {
+    state.disassembly.push(
+        String(state.line).padStart(5, "0") + ":    " + name
+    );
+    state.i++;
+    state.line++;
+}
 
-    while (i < code.length) {
-        switch (code[i]) {
+function constInstr(name, code, constants, state) {
+    let idx = code[state.i + 1];
+    state.disassembly.push(
+        String(state.line).padStart(5, "0") +
+            ":    " +
+            name +
+            " " +
+            constants[idx]
+    );
+    state.i += 2;
+    state.line++;
+}
+
+function dis(code, constants) {
+    let state = { i: 0, line: 0, disassembly: [] };
+
+    while (state.i < code.length) {
+        switch (code[state.i]) {
             case Opcodes.POP:
-                disassembly.push(i + ". POP");
-                i += 1;
+                simpleInstr("POP", state);
                 break;
             case Opcodes.PUSH_CONSTANT:
-                let idx = code[i + 1];
-                disassembly.push(i + ". PUSH_CONSTANT " + constants[idx]);
-                i += 2;
+                constInstr("PUSH_CONSTANT", code, constants, state);
                 break;
             case Opcodes.PUSH_TRUE:
-                disassembly.push(i + ". PUSH_TRUE");
-                i += 1;
+                simpleInstr("PUSH_TRUE", state);
                 break;
             case Opcodes.PUSH_FALSE:
-                disassembly.push(i + ". PUSH_FALSE");
-                i += 1;
+                simpleInstr("PUSH_FALSE", state);
                 break;
             case Opcodes.PUSH_NULL:
-                disassembly.push(i + ". PUSH_NULL");
-                i += 1;
+                simpleInstr("PUSH_NULL", state);
                 break;
             case Opcodes.PUSH_THIS:
-                disassembly.push(i + ". PUSH_THIS");
-                i += 1;
+                simpleInstr("PUSH_THIS", state);
                 break;
             case Opcodes.ADD:
-                disassembly.push(i + ". ADD");
-                i += 1;
+                simpleInstr("ADD", state);
                 break;
             case Opcodes.SUB:
-                disassembly.push(i + ". SUB");
-                i += 1;
+                simpleInstr("SUB", state);
                 break;
             case Opcodes.MUL:
-                disassembly.push(i + ". MUL");
-                i += 1;
+                simpleInstr("MUL", state);
                 break;
             case Opcodes.DIV:
-                disassembly.push(i + ". DIV");
-                i += 1;
+                simpleInstr("DIV", state);
                 break;
         }
     }
 
-    console.log(disassembly.join("\n"));
+    console.log(state.disassembly.join("\n"));
 }
 
 //==================================================================
@@ -2021,15 +2035,23 @@ Vm.prototype.pop = function () {
 //==================================================================
 
 (function () {
-    let runBtn = document.getElementById("parse-btn");
+    let parseBtn = document.getElementById("parse-btn");
+    let compileBtn = document.getElementById("compile-btn");
 
-    runBtn.onclick = function () {
+    parseBtn.onclick = function () {
         let textArea = document.getElementById("source-code");
         let source = textArea.value;
         let parser = new Parser(source);
         let ast = parser.parse();
         console.log("Successfully parsed!");
         console.log(JSON.stringify(ast, null, "  "));
+    };
+
+    compileBtn.onclick = function () {
+        let textArea = document.getElementById("source-code");
+        let source = textArea.value;
+        let parser = new Parser(source);
+        let ast = parser.parse();
         let compiler = new Compiler();
         let fun = compiler.compile(ast);
         dis(fun.code, fun.constants);
