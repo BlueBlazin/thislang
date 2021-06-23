@@ -1746,11 +1746,7 @@ let Opcodes = {
 // Runtime
 //==================================================================
 
-function JSFunction(name) {
-    this.name = name;
-    // -------------------------------------------
-    // Internal metadata
-    // -------------------------------------------
+function VMFunction() {
     // bytecode associated with this function
     this.code = [];
     // constants associated with this function
@@ -1767,7 +1763,7 @@ function JSFunction(name) {
 
 /** Bytecode Compiler */
 function Compiler() {
-    this.function = new JSFunction("<main>");
+    this.function = new VMFunction();
 }
 
 Compiler.prototype.compile = function (ast) {
