@@ -1,5 +1,7 @@
 # Thislang
 
+![Thislang logo](https://raw.githubusercontent.com/BlueBlazin/thislang/master/thislang.png)
+
 **WIP**
 
 ## About
