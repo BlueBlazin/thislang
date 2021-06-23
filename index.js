@@ -9,6 +9,7 @@ let DEBUG_VM = true;
 let DEBUG_PARSER = false;
 
 let STACK_MAX = 1024;
+let MAX_NUM_CONSTANTS = 256;
 
 //==================================================================
 // Helpers
@@ -629,10 +630,10 @@ Parser.prototype.forStmt = function () {
             init = this.letDclr();
         } else {
             init = this.expression();
+            // we only expect semicolon here since letDclr already consumes a semicolon
+            this.expect(TokenType.PUNCTUATOR, ";");
         }
     }
-
-    this.expect(TokenType.PUNCTUATOR, ";");
 
     // parse test
     if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== ";") {
@@ -645,8 +646,6 @@ Parser.prototype.forStmt = function () {
     if (nextToken.type !== TokenType.PUNCTUATOR || nextToken.value !== ";") {
         update = this.expression();
     }
-
-    this.expect(TokenType.PUNCTUATOR, ";");
 
     this.expect(TokenType.PUNCTUATOR, ")");
 
@@ -1729,38 +1728,209 @@ Parser.prototype.panic = function (msg) {
 //  Bytecode
 //==================================================================
 
-let Opcodes = {};
-
-//==================================================================
-// Compiler
-//==================================================================
-
-function Compiler(ast) {
-    this.ast = ast;
-    this.ctx = {};
-}
-
-Compiler.prototype.compile = function () {
-    //
+let Opcodes = {
+    POP: 0x00,
+    PUSH_CONSTANT: 0x01,
+    PUSH_TRUE: 0x02,
+    PUSH_FALSE: 0x03,
+    PUSH_NULL: 0x04,
+    PUSH_THIS: 0x05,
+    ADD: 0x06,
+    SUB: 0x07,
+    MUL: 0x08,
+    DIV: 0x09,
 };
-
-//------------------------------------------------------------------
-// Compiler - Code Generator
-//------------------------------------------------------------------
-
-function CodeGen() {
-    this.code = [];
-}
 
 //==================================================================
 // Runtime
 //==================================================================
 
-/*
-JSObject
-- shape: ptr to Shape
-- values: array of values
-*/
+function JSFunction(name) {
+    this.name = name;
+    // -------------------------------------------
+    // Internal metadata
+    // -------------------------------------------
+    // bytecode associated with this function
+    this.code = [];
+    // constants associated with this function
+    this.constants = [];
+    // instruction pointer
+    this.ip = 0;
+    // frame pointer
+    this.fp = 0;
+}
+
+//==================================================================
+// Compiler
+//==================================================================
+
+/** Bytecode Compiler */
+function Compiler() {
+    this.function = new JSFunction("<main>");
+}
+
+Compiler.prototype.compile = function (ast) {
+    for (let i = 0; i < ast.body.length; i++) {
+        this.stmtOrDclr(ast.body[i]);
+    }
+
+    return this.function;
+};
+
+Compiler.prototype.stmtOrDclr = function (ast) {
+    switch (ast.type) {
+        case AstType.EXPRESSION_STMT:
+            return this.expressionStmt(ast);
+        default:
+            this.panic();
+    }
+};
+
+Compiler.prototype.expressionStmt = function (ast) {
+    this.expression(ast.expression);
+};
+
+Compiler.prototype.expression = function (ast) {
+    switch (ast.type) {
+        case AstType.NUMBER:
+        case AstType.STRING:
+            return this.value(ast);
+        case AstType.BOOLEAN:
+            return this.boolean(ast);
+        case AstType.NULL:
+            return this.emitByte(Opcodes.PUSH_NULL);
+        case AstType.THIS:
+            return this.emitByte(Opcodes.PUSH_THIS);
+        case AstType.BINARY_EXPR:
+            return this.binary(ast);
+        default:
+            this.panic("in expression");
+    }
+};
+
+Compiler.prototype.binary = function (ast) {
+    // compile LHS
+    this.expression(ast.lhs);
+    // compile RHS
+    this.expression(ast.rhs);
+    // push operator
+    switch (ast.operator) {
+        case "+":
+            return this.emitByte(Opcodes.ADD);
+        case "-":
+            return this.emitByte(Opcodes.SUB);
+        case "*":
+            return this.emitByte(Opcodes.MUL);
+        case "/":
+            return this.emitByte(Opcodes.DIV);
+        default:
+            this.panic("Invalid binary operator " + ast.operator);
+    }
+};
+
+Compiler.prototype.boolean = function (ast) {
+    if (ast.value) {
+        this.emitByte(Opcodes.PUSH_TRUE);
+    } else {
+        this.emitByte(Opcodes.PUSH_FALSE);
+    }
+};
+
+Compiler.prototype.number = function (ast) {
+    // add value to the constant table
+    let index = this.addConstant(ast.value);
+    // push that value (by retrieving it using the constant idx)
+    // onto the stack
+    this.emitBytes([Opcodes.PUSH_CONSTANT, index]);
+};
+
+//------------------------------------------------------------------
+// Compiler - utils
+//------------------------------------------------------------------
+
+Compiler.prototype.panic = function (msg) {
+    throw Error("compiler panicked on: " + msg);
+};
+
+//------------------------------------------------------------------
+// Compiler - codegen
+//------------------------------------------------------------------
+
+/** Adds value to the current function's constants array and returns
+ * the index. */
+Compiler.prototype.addConstant = function (value) {
+    if (this.function.constants.length === MAX_NUM_CONSTANTS) {
+        this.panic("Too many constants.");
+    }
+
+    this.function.constants.push(value | 0x0);
+    return this.function.constants.length - 1;
+};
+
+Compiler.prototype.emitByte = function (byte) {
+    this.function.code.push(byte | 0x0);
+};
+
+Compiler.prototype.emitBytes = function (bytes) {
+    this.function.code.push(...bytes);
+};
+
+//==================================================================
+// Disassembler
+//==================================================================
+
+function dis(code, constants) {
+    let i = 0;
+    let disassembly = [];
+
+    while (i < code.length) {
+        switch (code[i]) {
+            case Opcodes.POP:
+                disassembly.push(i + ". POP");
+                i += 1;
+                break;
+            case Opcodes.PUSH_CONSTANT:
+                let idx = code[i + 1];
+                disassembly.push(i + ". PUSH_CONSTANT " + constants[idx]);
+                i += 2;
+                break;
+            case Opcodes.PUSH_TRUE:
+                disassembly.push(i + ". PUSH_TRUE");
+                i += 1;
+                break;
+            case Opcodes.PUSH_FALSE:
+                disassembly.push(i + ". PUSH_FALSE");
+                i += 1;
+                break;
+            case Opcodes.PUSH_NULL:
+                disassembly.push(i + ". PUSH_NULL");
+                i += 1;
+                break;
+            case Opcodes.PUSH_THIS:
+                disassembly.push(i + ". PUSH_THIS");
+                i += 1;
+                break;
+            case Opcodes.ADD:
+                disassembly.push(i + ". ADD");
+                i += 1;
+                break;
+            case Opcodes.SUB:
+                disassembly.push(i + ". SUB");
+                i += 1;
+                break;
+            case Opcodes.MUL:
+                disassembly.push(i + ". MUL");
+                i += 1;
+                break;
+            case Opcodes.DIV:
+                disassembly.push(i + ". DIV");
+                i += 1;
+                break;
+        }
+    }
+
+    console.log(disassembly.join("\n"));
+}
 
 //==================================================================
 // VM
@@ -1851,7 +2021,21 @@ Vm.prototype.pop = function () {
 //==================================================================
 
 (function () {
-    let source = String.raw`1 + 1`;
+    let runBtn = document.getElementById("parse-btn");
+
+    runBtn.onclick = function () {
+        let textArea = document.getElementById("source-code");
+        let source = textArea.value;
+        let parser = new Parser(source);
+        let ast = parser.parse();
+        console.log("Successfully parsed!");
+        console.log(JSON.stringify(ast, null, "  "));
+        let compiler = new Compiler();
+        let fun = compiler.compile(ast);
+        dis(fun.code, fun.constants);
+    };
+
+    // let source = `1 + 1`;
 
     // let tokenizer = new Tokenizer(source);
     // let nextToken;
@@ -1863,9 +2047,9 @@ Vm.prototype.pop = function () {
     //     }
     // }
 
-    let parser = new Parser(source);
-    let ast = parser.parse();
-    console.log("Successfully parsed!");
-    console.log(source);
-    console.log(JSON.stringify(ast, null, "  "));
+    // let parser = new Parser(source);
+    // let ast = parser.parse();
+    // console.log("Successfully parsed!");
+    // console.log(source);
+    // console.log(JSON.stringify(ast, null, "  "));
 })();

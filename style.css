@@ -1,0 +1,68 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #333;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor {
+  width: 100vw;
+  height: calc(100vh - 100px);
+}
+
+.editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(100vh - 100px);
+  outline: none;
+  resize: none;
+  overflow: auto;
+  padding: 20px;
+  font-size: 15px;
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+}
+
+.output {
+  width: 100vw;
+  height: 400px;
+}
+
+.btn {
+  height: 50px;
+  width: 150px;
+  font-size: 20px;
+  outline: transparent;
+  box-shadow: none;
+  font-family: -webkit-body;
+  border: none;
+  /* border: 1px solid rgb(78, 78, 78); */
+  background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%);
+  color:  white;
+  font-family: Helvetica;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 500ms smooth;
+  margin: 0 20px;
+}
+
+.btn:hover {
+  background: linear-gradient(45deg, rgb(48, 107, 184) 0%, rgb(122, 78, 204) 25%, rgb(150, 55, 102) 51%, rgb(231, 136, 48) 100%);
+}
+
+.btn:active {
+  font-size: 18px;
+}
+
+.controls {
+  width: 100vw;
+  height: 100px;
+  display: flex;
+  align-items: center;
+}
