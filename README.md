@@ -1,12 +1,12 @@
 # Thislang
 
-![Thislang logo](https://raw.githubusercontent.com/BlueBlazin/thislang/master/thislang.png)
+![Thislang logo](https://raw.githubusercontent.com/BlueBlazin/thislang/master/thislang-logo.png)
 
 **WIP**
 
 ## About
 
-This-lang is an implementation of a subset of Javascript in that subset of Javascript.
+This-lang (thislang) is an implementation of a subset of Javascript in that subset of Javascript.
 
 ## Features
 
@@ -30,7 +30,7 @@ This-lang is an implementation of a subset of Javascript in that subset of Javas
 
 ## Implementation
 
-This-lang is a stack based Bytecode Virtual Machine (VM). The interpretation happens in four main stages.
+Thislang is a stack based Bytecode Virtual Machine (VM). The interpretation happens in four main stages.
 
 1. Tokenization: the source code is broken down into a stream of lexical tokens.
 2. Parsing: the token stream is parsed into an Abstract Syntax Tree (AST).

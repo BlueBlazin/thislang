@@ -506,7 +506,7 @@ Parser.prototype.statementOrDeclaration = function () {
             case "{":
                 return this.blockStmt();
             default:
-                this.panic(token.value);
+                return this.expressionStmt();
         }
     }
 
@@ -542,7 +542,7 @@ Parser.prototype.statement = function () {
             case "{":
                 return this.blockStmt();
             default:
-                this.panic(token.value);
+                return this.expressionStmt();
         }
     }
 
@@ -1283,7 +1283,7 @@ Parser.prototype.callTail = function (expr) {
             nextToken.value === "."
         ) {
             this.advance();
-            let property = this.identifier();
+            let property = this.identifier().value;
             expr = {
                 type: AstType.STATIC_MEMBER_EXPR,
                 object: expr,
@@ -1372,9 +1372,10 @@ Parser.prototype.primary = function () {
             } else if (token.value === "{") {
                 return this.object();
             } else if (token.value === "(") {
+                // consume `(`
                 this.advance();
                 let expr = this.expression();
-                this.expect(")");
+                this.expect(TokenType.PUNCTUATOR, ")");
                 return expr;
             } else {
                 this.panic(token.value);
@@ -1515,14 +1516,31 @@ Parser.prototype.propertyName = function () {
 
     switch (token.type) {
         case TokenType.IDENTIFIER:
-            return this.identifier();
         case TokenType.STRING:
         case TokenType.NUMBER:
-            return this.literal();
+        case TokenType.KEYWORD:
+        case TokenType.NULL:
+        case TokenType.BOOLEAN:
+            this.advance();
+            return { value: token.value, line: token.line };
         default:
             this.panic(token.value);
     }
 };
+// Parser.prototype.propertyName = function () {
+//     dbg(DEBUG_PARSER, ["propertyName"]);
+//     let token = this.peek(0);
+
+//     switch (token.type) {
+//         case TokenType.IDENTIFIER:
+//             return this.identifier();
+//         case TokenType.STRING:
+//         case TokenType.NUMBER:
+//             return this.literal();
+//         default:
+//             this.panic(token.value);
+//     }
+// };
 
 Parser.prototype.array = function () {
     dbg(DEBUG_PARSER, ["array"]);
@@ -1730,32 +1748,36 @@ Parser.prototype.panic = function (msg) {
 
 // prettier-ignore
 let Opcodes = {
-    POP:             0x00,
-    PUSH_CONSTANT:   0x01,
-    PUSH_TRUE:       0x02,
-    PUSH_FALSE:      0x03,
-    PUSH_NULL:       0x04,
-    PUSH_THIS:       0x05,
-    ADD:             0x06,
-    SUB:             0x07,
-    MUL:             0x08,
-    DIV:             0x09,
+    POP:              0x00,
+    PUSH_CONSTANT:    0x01,
+    PUSH_TRUE:        0x02,
+    PUSH_FALSE:       0x03,
+    PUSH_NULL:        0x04,
+    PUSH_THIS:        0x05,
+    ADD:              0x06,
+    SUB:              0x07,
+    MUL:              0x08,
+    DIV:              0x09,
+    NEW_OBJECT:       0x0A,
+    NEW_ARRAY:        0x0B,
+    GET_BY_ID:        0x0C,
+    SET_BY_ID:        0x0D,
+    GET_BY_VALUE:     0x0E,
+    SET_BY_VALUE:     0x0F,
+    JUMP_IF_FALSE:    0x10,
+    JUMP:             0x11,
+    PUSH_UNDEFINED:   0x12,
+    GET_LOCAL:        0x13,
+    GET_FROM_ENV:     0x14,
 };
 
-//==================================================================
-// Runtime
-//==================================================================
-
-function VMFunction() {
-    // bytecode associated with this function
-    this.code = [];
-    // constants associated with this function
-    this.constants = [];
-    // instruction pointer
-    this.ip = 0;
-    // frame pointer
-    this.fp = 0;
-}
+let AssignType = {
+    EQUAL: 0x00,
+    PLUS_EQUAL: 0x01,
+    MINUS_EQUAL: 0x02,
+    TIMES_EQUAL: 0x03,
+    SLASH_EQUAL: 0x04,
+};
 
 //==================================================================
 // Compiler
@@ -1764,6 +1786,8 @@ function VMFunction() {
 /** Bytecode Compiler */
 function Compiler() {
     this.function = new VMFunction();
+    this.scopeDepth = 0;
+    this.locals = [{ name: "", depth: 0, isCaptured: false, ready: true }];
 }
 
 Compiler.prototype.compile = function (ast) {
@@ -1777,10 +1801,130 @@ Compiler.prototype.compile = function (ast) {
 Compiler.prototype.stmtOrDclr = function (ast) {
     switch (ast.type) {
         case AstType.EXPRESSION_STMT:
-            return this.expressionStmt(ast);
+        case AstType.IF_STMT:
+        case AstType.BLOCK_STMT:
+            return this.statement(ast);
+        case AstType.LET_DCLR:
+            return this.letDclr(ast);
         default:
-            this.panic();
+            this.panic(ast.type);
     }
+};
+
+Compiler.prototype.statement = function (ast) {
+    switch (ast.type) {
+        case AstType.EXPRESSION_STMT:
+            return this.expressionStmt(ast);
+        case AstType.IF_STMT:
+            return this.ifStmt(ast);
+        case AstType.BLOCK_STMT:
+            this.beginScope();
+            this.blockStmt(ast);
+            this.endScope();
+            return;
+        default:
+            this.panic(ast.type);
+    }
+};
+
+Compiler.prototype.letDclr = function (ast) {
+    // add name to current scope
+    this.declareLocal(ast.id.value);
+
+    // compile initializer
+    if (ast.init !== null) {
+        this.expression(ast.init);
+    } else {
+        this.emitByte(Opcodes.PUSH_UNDEFINED);
+    }
+    // mark variable ready for access
+    this.markReady();
+};
+
+/**
+ * Declares the local variable. Check if name already exists
+ * within current scope and if not, add it to current locals array.
+ *
+ * Thilang deviates from JS here. Let declarations are not
+ * hoisted and don't have a Temporal Dead Zone (TDZ)
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/let#temporal_dead_zone_tdz
+ */
+Compiler.prototype.declareLocal = function (name) {
+    let local;
+    // check if name already declared within current scope
+    for (let i = this.locals.length - 1; i >= 0; i--) {
+        local = this.locals[i];
+        // if we've moved too far up, break
+        if (local.depth < this.scopeDepth && local.ready) {
+            break;
+        }
+
+        if (local.name === name) {
+            this.panic("Identifier " + name + " has already been declared.");
+        }
+    }
+
+    // add local variable to current scope
+    this.addLocal(name);
+};
+
+Compiler.prototype.addLocal = function (name) {
+    if (this.locals.length === 256) {
+        this.panic("Too many locals.");
+    }
+
+    this.locals.push({
+        name: name,
+        depth: this.scopeDepth,
+        isCaptured: false,
+        ready: false,
+    });
+};
+
+/**
+ * Mark the local variable as ready to be read from. We do this after
+ * compiling the variables initialization to avoid situations like
+ * `let x = x` where `x` doesn't exist in an outer scope.
+ */
+Compiler.prototype.markReady = function () {
+    this.locals[this.locals.length - 1].ready = true;
+};
+
+Compiler.prototype.blockStmt = function (ast) {
+    let body = ast.body;
+
+    for (let i = 0; i < body.length; i++) {
+        this.stmtOrDclr(body[i]);
+    }
+};
+
+Compiler.prototype.ifStmt = function (ast) {
+    // compile the test
+    this.expression(ast.test);
+    // skip ahead if test fails (placeholder)
+    let elseIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
+    // compile then
+    this.statement(ast.consequent);
+    // skip the `else` part if test didn't fail
+    let thenIdx = this.emitJump(Opcodes.JUMP);
+    // we now know where exactly the `else` jump
+    // should take us so we patch it
+    this.patchJump(elseIdx);
+
+    if (ast.alternate !== null) {
+        // compile else
+        this.statement(ast.alternate);
+    }
+    // we now know where the `then` jump
+    // should take us so we patch it
+    this.patchJump(thenIdx);
+};
+
+Compiler.prototype.patchJump = function (idx) {
+    let jump = this.function.code.length - idx - 2;
+
+    this.function.code[idx] = (jump >> 8) & 0xff;
+    this.function.code[idx + 1] = jump & 0xff;
 };
 
 Compiler.prototype.expressionStmt = function (ast) {
@@ -1793,8 +1937,8 @@ Compiler.prototype.expressionStmt = function (ast) {
 
 Compiler.prototype.expression = function (ast) {
     switch (ast.type) {
-        case AstType.NUMBER:
         case AstType.STRING:
+        case AstType.NUMBER:
             return this.number(ast);
         case AstType.BOOLEAN:
             return this.boolean(ast);
@@ -1802,11 +1946,102 @@ Compiler.prototype.expression = function (ast) {
             return this.emitByte(Opcodes.PUSH_NULL);
         case AstType.THIS:
             return this.emitByte(Opcodes.PUSH_THIS);
+        case AstType.OBJECT:
+            return this.object(ast);
+        case AstType.ARRAY:
+            return this.array(ast);
         case AstType.BINARY_EXPR:
             return this.binary(ast);
+        case AstType.STATIC_MEMBER_EXPR:
+            return this.staticMemberExpr(ast);
+        case AstType.IDENTIFIER:
+            return this.identifier(ast);
         default:
             this.panic("in expression");
     }
+};
+
+Compiler.prototype.identifier = function (ast) {
+    let idx;
+    if ((idx = this.resolveLocal(ast.value))) {
+        // statically resolved local variable
+        this.emitBytes([Opcodes.GET_LOCAL, idx]);
+    } else {
+        // global variable
+        idx = this.addConstant(ast.value);
+        this.emitBytes([Opcodes.GET_FROM_ENV, idx]);
+    }
+};
+
+Compiler.prototype.resolveLocal = function (name) {
+    let local;
+    for (let idx = this.locals.length - 1; idx >= 0; idx--) {
+        local = this.locals[idx];
+
+        if (local.name === name) {
+            if (!local.ready) {
+                this.panic("Cannot access " + name + " before initialization.");
+            }
+
+            return idx;
+        }
+    }
+};
+
+Compiler.prototype.staticMemberExpr = function (ast) {
+    // compile lhs of `.`
+    this.expression(ast.object);
+    // emit opcode
+    this.emitByte(Opcodes.GET_BY_ID);
+    // emit constant index of property id
+    let index = this.addConstant(ast.property);
+    this.emitByte(index);
+    // ------ Inline cache info ----------
+    // TODO: handle 8 bit limit for IC
+    // emit shape id
+    this.emitByte(0x00);
+    // emit value offset
+    this.emitByte(0x00);
+};
+
+Compiler.prototype.array = function (ast) {
+    // iterate over elements and visit
+    let elements = ast.elements;
+    let numElements = elements.length;
+
+    // iterate in reverse order to cancel out LIFO
+    for (let i = numElements - 1; i >= 0; i--) {
+        // compile element
+        this.expression(elements[i]);
+    }
+
+    // add numElements to constant table
+    let index = this.addConstant(numElements);
+    // emit opcode to create the array
+    this.emitBytes([Opcodes.NEW_ARRAY, index]);
+};
+
+Compiler.prototype.object = function (ast) {
+    // iterate over properties and for each property:
+    // 1. visit the value
+    // 2. push the property name
+    let properties = ast.properties;
+    let numProperties = properties.length;
+
+    let property;
+    // iterate in reverse order to cancel out LIFO
+    for (let i = numProperties - 1; i >= 0; i--) {
+        property = properties[i];
+        // compile property value
+        this.expression(property.value);
+        // push name on top of stack
+        this.emitPushConstant(String(property.name.value));
+    }
+
+    // add numProperties to constant table
+    let index = this.addConstant(numProperties);
+    // emit opcode to create the object
+    this.emitBytes([Opcodes.NEW_OBJECT, index]);
 };
 
 Compiler.prototype.binary = function (ast) {
@@ -1814,7 +2049,7 @@ Compiler.prototype.binary = function (ast) {
     this.expression(ast.lhs);
     // compile RHS
     this.expression(ast.rhs);
-    // push operator
+    // emit binary opcode
     switch (ast.operator) {
         case "+":
             return this.emitByte(Opcodes.ADD);
@@ -1838,16 +2073,34 @@ Compiler.prototype.boolean = function (ast) {
 };
 
 Compiler.prototype.number = function (ast) {
-    // add value to the constant table
-    let index = this.addConstant(ast.value);
-    // push that value (by retrieving it using the constant idx)
-    // onto the stack
-    this.emitBytes([Opcodes.PUSH_CONSTANT, index]);
+    this.emitPushConstant(ast.value);
 };
 
 //------------------------------------------------------------------
 // Compiler - utils
 //------------------------------------------------------------------
+
+Compiler.prototype.beginScope = function () {
+    this.scopeDepth++;
+};
+
+Compiler.prototype.endScope = function () {
+    this.scopeDepth--;
+
+    let local;
+    for (let i = this.locals.length - 1; i >= 0; i--) {
+        local = this.locals[i];
+
+        if (local.depth > this.scopeDepth) {
+            if (local.isCaptured) {
+                // TODO
+            } else {
+                this.emitByte(Opcodes.POP);
+            }
+            this.locals.pop();
+        }
+    }
+};
 
 Compiler.prototype.panic = function (msg) {
     throw Error("compiler panicked on: " + msg);
@@ -1856,6 +2109,20 @@ Compiler.prototype.panic = function (msg) {
 //------------------------------------------------------------------
 // Compiler - codegen
 //------------------------------------------------------------------
+
+Compiler.prototype.emitJump = function (jumpOpcode) {
+    this.emitBytes([jumpOpcode, 0x00, 0x00]);
+
+    return this.function.code.length - 2;
+};
+
+Compiler.prototype.emitPushConstant = function (value) {
+    // add value to the constant table
+    let index = this.addConstant(value);
+    // push that value (by retrieving it using the constant idx)
+    // onto the stack
+    this.emitBytes([Opcodes.PUSH_CONSTANT, index]);
+};
 
 /** Adds value to the current function's constants array and returns
  * the index. */
@@ -1882,27 +2149,50 @@ Compiler.prototype.emitBytes = function (bytes) {
 
 function simpleInstr(name, state) {
     state.disassembly.push(
-        String(state.line).padStart(5, "0") + ":    " + name
+        String(state.i).padStart(5, "0") + ":    " + name.padEnd(14, " ")
     );
     state.i++;
-    state.line++;
 }
 
 function constInstr(name, code, constants, state) {
     let idx = code[state.i + 1];
     state.disassembly.push(
-        String(state.line).padStart(5, "0") +
+        String(state.i).padStart(5, "0") +
             ":    " +
-            name +
+            name.padEnd(14, " ") +
             " " +
             constants[idx]
     );
     state.i += 2;
-    state.line++;
+}
+
+function literalInstr(name, code, state) {
+    let idx = code[state.i + 1];
+    state.disassembly.push(
+        String(state.i).padStart(5, "0") +
+            ":    " +
+            name.padEnd(14, " ") +
+            " " +
+            idx
+    );
+    state.i += 2;
+}
+
+function jumpInstr(name, code, state) {
+    let idx = state.i + 3 + ((code[state.i + 1] << 8) | code[state.i + 2]);
+
+    state.disassembly.push(
+        String(state.i).padStart(5, "0") +
+            ":    " +
+            name.padEnd(14, " ") +
+            " -> " +
+            String(idx).padStart(5, "0")
+    );
+    state.i += 3;
 }
 
 function dis(code, constants) {
-    let state = { i: 0, line: 0, disassembly: [] };
+    let state = { i: 0, disassembly: [] };
 
     while (state.i < code.length) {
         switch (code[state.i]) {
@@ -1936,6 +2226,34 @@ function dis(code, constants) {
             case Opcodes.DIV:
                 simpleInstr("DIV", state);
                 break;
+            case Opcodes.NEW_OBJECT:
+                constInstr("NEW_OBJECT", code, constants, state);
+                break;
+            case Opcodes.NEW_ARRAY:
+                constInstr("NEW_ARRAY", code, constants, state);
+                break;
+            case Opcodes.GET_BY_ID:
+                constInstr("GET_BY_ID", code, constants, state);
+                // skip inline caching details
+                state.i += 2;
+                break;
+            case Opcodes.JUMP_IF_FALSE:
+                jumpInstr("JUMP_IF_FALSE", code, state);
+                break;
+            case Opcodes.JUMP:
+                jumpInstr("JUMP", code, state);
+                break;
+            case Opcodes.PUSH_UNDEFINED:
+                simpleInstr("PUSH_UNDEFINED", state);
+                break;
+            case Opcodes.GET_LOCAL:
+                literalInstr("GET_LOCAL", code, state);
+                break;
+            case Opcodes.GET_FROM_ENV:
+                constInstr("GET_FROM_ENV", code, constants, state);
+                break;
+            default:
+                throw Error("Unknown opcode");
         }
     }
 
@@ -1943,28 +2261,180 @@ function dis(code, constants) {
 }
 
 //==================================================================
+// Runtime
+//==================================================================
+
+// prettier-ignore
+let JSType = {
+    NUMBER:     0x00,
+    BOOL:       0x01,
+    NULL:       0x02,
+    UNDEFINED:  0x03,
+    BOOL:       0x04,
+    OBJECT:     0x05,
+    STRING:     0x06,
+};
+
+// prettier-ignore
+let JSObjectType = {
+    ORDINARY:  0x00,
+    ARRAY:     0x01,
+    FUNCTION:  0x02,
+    NATIVE:    0x03,
+}
+
+function Shape(key, offset, parent) {
+    this.parent = parent;
+    this.key = key;
+    this.offset = offset;
+    this.transitions = {};
+    this.shapeTable = {};
+}
+
+Shape.prototype.transition = function (key) {
+    if (this.transitions[key] !== undefined) {
+        return this.transitions[key];
+    }
+
+    let shape = new Shape(
+        key,
+        this.offset !== null ? this.offset + 1 : 0,
+        this
+    );
+
+    // clone parent (this) shapeTable
+    Object.assign(shape.shapeTable, this.shapeTable);
+    // assign self to shapeTable (so its transition contains it)
+    shape.shapeTable[key] = shape;
+
+    this.transitions[key] = shape;
+
+    return shape;
+};
+
+function JSObject(shape) {
+    this.type = JSType.OBJECT;
+    this.objectType = JSObjectType.ORDINARY;
+
+    this.indexedValues = [];
+
+    this.shape = shape;
+}
+
+JSObject.prototype.set = function (key, value) {
+    this.shape = this.shape.transition(key);
+    this.indexedValues.push(value);
+};
+
+function Runtime() {
+    // primitive constants
+    this.JSNull = { type: JSType.NULL };
+    this.JSUndefined = { type: JSType.UNDEFINED };
+    this.JSTrue = { type: JSType.BOOL };
+    this.JSFalse = { type: JSType.BOOL };
+
+    this.emptyObjectShape = new Shape("", null, null);
+}
+
+Runtime.prototype.newEmptyObject = function () {
+    return new JSObject(this.emptyObjectShape);
+};
+
+//------------------------------------------------------------------
+// Runtime - VMFunction
+//------------------------------------------------------------------
+
+function VMFunction() {
+    // bytecode associated with this function
+    this.code = [];
+    // constants associated with this function
+    this.constants = [];
+    // instruction pointer
+    this.ip = 0;
+    // frame pointer
+    this.fp = 0;
+    // scope for dynamically resolved variables
+    this.scope = {};
+}
+
+//------------------------------------------------------------------
+// Runtime - Inline Cache
+//------------------------------------------------------------------
+
+function InlineCache() {
+    this.cache = {};
+    this.freed = [];
+    this.i = 0;
+}
+
+InlineCache.prototype.addShape = function (shape) {
+    // TOOD: use freed if available
+    this.cache[this.i] = shape;
+    shape.cacheIdx = this.i;
+    return this.i++;
+};
+
+InlineCache.prototype.getShape = function (key) {
+    return this.cache[key];
+};
+
+//==================================================================
 // VM
 //==================================================================
 
-function Vm(code) {
-    // instruction pointer
-    this.ip = 0;
+function Vm(fun) {
+    // current function
+    this.fun = fun;
     // stack pointer
     this.sp = 0;
-    this.code = code;
     this.stack = initArray(STACK_MAX, 0);
+    this.runtime = new Runtime();
+    this.inlineCache = new InlineCache();
 }
 
 /** Run VM */
 Vm.prototype.run = function () {
     // main interpreter loop
-    while (this.ip < this.code.length) {
+    while (this.fun.ip < this.fun.code.length) {
         switch (this.fetch()) {
             case Opcodes.POP:
-                this.opPop();
+                console.log("Popping: ", this.pop());
                 break;
-            case Opcodes.LOG:
-                this.opLog();
+            case Opcodes.PUSH_CONSTANT:
+                this.pushConstant();
+                break;
+            case Opcodes.PUSH_TRUE:
+                this.push(true);
+                break;
+            case Opcodes.PUSH_FALSE:
+                this.push(false);
+                break;
+            case Opcodes.PUSH_NULL:
+                this.push(null);
+                break;
+            case Opcodes.ADD:
+                this.add();
+                break;
+            case Opcodes.SUB:
+                this.sub();
+                break;
+            case Opcodes.MUL:
+                this.mul();
+                break;
+            case Opcodes.DIV:
+                this.div();
+                break;
+            case Opcodes.NEW_OBJECT:
+                this.newObject();
+                break;
+            case Opcodes.GET_BY_ID:
+                this.getById();
+                break;
+            case Opcodes.JUMP_IF_FALSE:
+                this.jump(true);
+                break;
+            case Opcodes.JUMP:
+                this.jump(false);
                 break;
         }
     }
@@ -1974,55 +2444,154 @@ Vm.prototype.run = function () {
 // VM - instructions
 //------------------------------------------------------------------
 
-/** Pop value from top of stack and discard it */
-Vm.prototype.opPop = function () {
-    dbg("Op POP");
-    if (this.sp > 0) {
-        this.pop();
-    } else {
-        this.panic();
+Vm.prototype.jump = function (onFalse) {
+    let jump = (this.fetch() << 8) | this.fetch();
+
+    if (!onFalse || !this.isTruthy(this.peek())) {
+        this.fun.ip += jump;
     }
 };
 
-/** Pop top value from stack and log it to console */
-Vm.prototype.opLog = function () {
-    dbg("Op LOG");
-    let value = this.pop();
-    console.log(value);
+Vm.prototype.getById = function () {
+    // pop object off of the stack
+    let object = this.pop();
+    let shape = object.shape;
+    // pop id, shape index, and offset
+    let id = this.fetchConstant();
+    let cacheIdx = this.fetch();
+    let cacheOffset = this.fetch();
+
+    if (shape.cacheIdx === cacheIdx) {
+        // fast path
+        this.push(object.indexedValues[cacheOffset]);
+    } else {
+        // slow path
+        if (shape.shapeTable[id] !== undefined) {
+            let offset = object.shape.shapeTable[id].offset;
+
+            this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
+
+            this.push(object.indexedValues[offset]);
+        } else {
+            // walk the prototype chain of object to search
+            // for property
+            // TODO: implement prototype search
+            this.push(this.runtime.JSUndefined);
+        }
+    }
+};
+
+Vm.prototype.modifyCodeForIC = function (cacheIdx, cacheOffset) {
+    this.fun.code[this.fun.ip - 1] = cacheOffset;
+    this.fun.code[this.fun.ip - 2] = cacheIdx;
+};
+
+Vm.prototype.newObject = function () {
+    let numProperties = this.fetchConstant();
+
+    let object = this.runtime.newEmptyObject();
+
+    let key, value;
+    for (let i = 0; i < numProperties; i++) {
+        key = this.pop();
+        value = this.pop();
+        // object.shape = object.shape.transition(key);
+        // object.indexedValues.push(value);
+        object.set(key, value);
+    }
+
+    this.push(object);
+};
+
+Vm.prototype.add = function () {
+    let rhs = this.pop();
+    let lhs = this.pop();
+
+    this.push(lhs + rhs);
+};
+
+Vm.prototype.sub = function () {
+    let rhs = this.pop();
+    let lhs = this.pop();
+
+    this.push(lhs - rhs);
+};
+
+Vm.prototype.mul = function () {
+    let rhs = this.pop();
+    let lhs = this.pop();
+
+    this.push(lhs * rhs);
+};
+
+Vm.prototype.div = function () {
+    let rhs = this.pop();
+    let lhs = this.pop();
+
+    this.push(lhs / rhs);
+};
+
+Vm.prototype.pushConstant = function () {
+    let value = this.fetchConstant();
+    this.push(value);
 };
 
 //------------------------------------------------------------------
 // VM - utils
 //------------------------------------------------------------------
 
+Vm.prototype.isTruthy = function (value) {
+    // TODO: implement this properly
+    return !!value;
+};
+
+/** Fetch constant */
+Vm.prototype.fetchConstant = function () {
+    let index = this.fetch();
+
+    if (this.fun.constants.length <= index) {
+        this.panic("Invalid constant table index.");
+    }
+
+    return this.fun.constants[index];
+};
+
 /** Fetch next opcode */
 Vm.prototype.fetch = function () {
-    return this.code[this.ip++];
+    return this.fun.code[this.fun.ip++];
 };
 
 /** Panic */
-Vm.prototype.panic = function () {
-    return;
+Vm.prototype.panic = function (msg) {
+    throw Error(msg);
+};
+
+Vm.prototype.peek = function () {
+    if (this.sp > 0) {
+        return this.stack[this.sp - 1];
+    } else {
+        this.panic("Stackunderflow");
+    }
 };
 
 /** Push value on top of stack */
 Vm.prototype.push = function (value) {
+    // console.log("Stack before push: " + this.stack.slice(0, 4));
     if (this.sp < STACK_MAX) {
         this.stack[this.sp++] = value;
-        dbg("Stack after push:", this.stack.slice(0, this.sp));
     } else {
-        this.panic();
+        this.panic("Stackoverflow");
     }
 };
 
 /** Pop value from top of stack and return it */
 Vm.prototype.pop = function () {
+    // console.log("Stack before pop: " + this.stack.slice(0, 4));
     if (this.sp > 0) {
         let value = this.stack[--this.sp];
-        dbg("Stack after POP:", this.stack.slice(0, this.sp));
         return value;
     } else {
-        this.panic();
+        this.panic("Stackunderflow");
     }
 };
 
@@ -2033,6 +2602,7 @@ Vm.prototype.pop = function () {
 (function () {
     let parseBtn = document.getElementById("parse-btn");
     let compileBtn = document.getElementById("compile-btn");
+    let runBtn = document.getElementById("run-btn");
 
     parseBtn.onclick = function () {
         let textArea = document.getElementById("source-code");
@@ -2051,6 +2621,20 @@ Vm.prototype.pop = function () {
         let compiler = new Compiler();
         let fun = compiler.compile(ast);
         dis(fun.code, fun.constants);
+    };
+
+    runBtn.onclick = function () {
+        let textArea = document.getElementById("source-code");
+        let source = textArea.value;
+
+        let parser = new Parser(source);
+        let ast = parser.parse();
+
+        let compiler = new Compiler();
+        let fun = compiler.compile(ast);
+
+        let vm = new Vm(fun);
+        vm.run();
     };
 
     // let source = `1 + 1`;
