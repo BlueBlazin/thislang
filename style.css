@@ -42,7 +42,7 @@
   box-shadow: none;
   font-family: -webkit-body;
   border: none;
-  background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%);
+  /* background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%); */
   color:  white;
   font-family: Helvetica;
   cursor: pointer;
@@ -51,12 +51,36 @@
   margin: 0 20px;
 }
 
-.btn:hover {
+/* .btn:hover {
   background: linear-gradient(45deg, rgb(48, 107, 184) 0%, rgb(122, 78, 204) 25%, rgb(150, 55, 102) 51%, rgb(231, 136, 48) 100%);
-}
+} */
 
 .btn:active {
   font-size: 18px;
+}
+
+#parse-btn {
+  background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%);
+}
+
+#parse-btn:hover {
+  background: linear-gradient(45deg, rgb(48, 107, 184) 0%, rgb(122, 78, 204) 25%, rgb(150, 55, 102) 51%, rgb(231, 136, 48) 100%);
+}
+
+#compile-btn {
+  background: linear-gradient(45deg, rgb(227, 59, 143) 0%, rgb(230, 87, 106) 25%, rgb(183, 120, 68) 51%, rgb(225, 255, 53) 100%);
+}
+
+#compile-btn:hover {
+  background: linear-gradient(45deg, rgb(194, 51, 51) 0%, rgb(201, 136, 76) 25%, rgb(158, 183, 68) 51%, rgb(46, 228, 107) 100%);
+}
+
+#run-btn {
+  background: linear-gradient(45deg, rgb(126, 227, 59) 0%, rgb(87, 230, 135) 25%, rgb(68, 160, 183) 51%, rgb(83, 53, 255) 100%);
+}
+
+#run-btn:hover {
+  background: linear-gradient(45deg, rgb(53, 202, 85) 0%, rgb(75, 193, 197) 25%, rgb(99, 68, 183) 51%, rgb(191, 49, 235) 100%);
 }
 
 .controls {

@@ -716,7 +716,8 @@ Parser.prototype.switchStmt = function () {
                     nextToken.value === "}"
                 )
             ) {
-                consequent = this.statement();
+                // consequent = this.statement();
+                consequent = this.switchCase();
             }
 
             cases.push({
@@ -741,7 +742,7 @@ Parser.prototype.switchStmt = function () {
 
             cases.push({
                 test: null,
-                consequent: this.statement(),
+                consequent: this.switchCase(),
                 line: line,
             });
         } else {
@@ -759,6 +760,24 @@ Parser.prototype.switchStmt = function () {
         cases: cases,
         line: line,
     };
+};
+
+Parser.prototype.switchCase = function () {
+    function predicate(token) {
+        return (
+            !(
+                token.type === TokenType.KEYWORD &&
+                (token.value === "case" || token.value === "default")
+            ) && !(token.type === TokenType.PUNCTUATOR && token.value === "}")
+        );
+    }
+
+    let consequent = this.parseWithWhile(
+        this.statementOrDeclaration.bind(this),
+        predicate
+    );
+
+    return consequent;
 };
 
 Parser.prototype.continueStmt = function () {
@@ -1527,20 +1546,6 @@ Parser.prototype.propertyName = function () {
             this.panic(token.value);
     }
 };
-// Parser.prototype.propertyName = function () {
-//     dbg(DEBUG_PARSER, ["propertyName"]);
-//     let token = this.peek(0);
-
-//     switch (token.type) {
-//         case TokenType.IDENTIFIER:
-//             return this.identifier();
-//         case TokenType.STRING:
-//         case TokenType.NUMBER:
-//             return this.literal();
-//         default:
-//             this.panic(token.value);
-//     }
-// };
 
 Parser.prototype.array = function () {
     dbg(DEBUG_PARSER, ["array"]);
@@ -1662,22 +1667,22 @@ Parser.prototype.expectSemicolon = function () {
     let nextToken = this.peek(0);
 
     if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === ";") {
+        // consume `;`
         this.advance();
     } else if (nextToken.line === this.line) {
-        // only perform automatic semicolon insertion if next token is `}`
+        // if next token is on the same line only perform
+        // automatic semicolon insertion if it's `}` or EOF
         if (
-            (nextToken.type === TokenType.PUNCTUATOR &&
-                nextToken.value === "}") ||
-            nextToken.type === TokenType.EOF
+            !(
+                (nextToken.type === TokenType.PUNCTUATOR &&
+                    nextToken.value === "}") ||
+                nextToken.type === TokenType.EOF
+            )
         ) {
-            this.advance();
-        } else {
             this.panic(nextToken.value);
         }
-    } else {
-        // perform automatic semicolon insertion
-        this.advance();
     }
+    // else perform automatic semicolon insertion
 };
 
 Parser.prototype.parseWithWhile = function (parseFn, predicate) {
@@ -1769,14 +1774,19 @@ let Opcodes = {
     PUSH_UNDEFINED:   0x12,
     GET_LOCAL:        0x13,
     GET_FROM_ENV:     0x14,
-};
-
-let AssignType = {
-    EQUAL: 0x00,
-    PLUS_EQUAL: 0x01,
-    MINUS_EQUAL: 0x02,
-    TIMES_EQUAL: 0x03,
-    SLASH_EQUAL: 0x04,
+    DUPLICATE:        0x15,
+    CMP_EQ:           0x16,
+    JUMP_IF_TRUE:     0x17,
+    LOOP:             0x18,
+    PUSH_INT:         0x19,
+    SET_LOCAL:        0x1A,
+    SET_FROM_ENV:     0x1B,
+    SWAP_TOP_TWO:     0x1C,
+    CMP_LT:           0x1E,
+    CMP_LEQ:          0x1F,
+    CMP_GT:           0x20,
+    CMP_GEQ:          0x21,
+    CMP_NEQ:          0x22,
 };
 
 //==================================================================
@@ -1803,6 +1813,8 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.EXPRESSION_STMT:
         case AstType.IF_STMT:
         case AstType.BLOCK_STMT:
+        case AstType.SWITCH_STMT:
+        case AstType.WHILE_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -1822,9 +1834,72 @@ Compiler.prototype.statement = function (ast) {
             this.blockStmt(ast);
             this.endScope();
             return;
+        case AstType.SWITCH_STMT:
+            this.beginScope();
+            this.switchStmt(ast);
+            this.endScope();
+            return;
+        case AstType.WHILE_STMT:
+            return this.whileStmt(ast);
         default:
             this.panic(ast.type);
     }
+};
+
+Compiler.prototype.whileStmt = function (ast) {
+    // record next position for looping
+    let loopStart = this.function.code.length;
+    // compile test
+    this.expression(ast.test);
+    // duplicate and jump if not equal
+    // this.emitByte(Opcodes.DUPLICATE);
+    let jumpIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
+    // compile body
+    this.statement(ast.body);
+    // loop back
+    this.emitLoop(loopStart);
+    // patch jump
+    this.patchJump(jumpIdx);
+};
+
+Compiler.prototype.statementList = function (statements) {
+    for (let i = 0; i < statements.length; i++) {
+        this.stmtOrDclr(statements[i]);
+    }
+};
+
+Compiler.prototype.switchStmt = function (ast) {
+    // compile the discriminant
+    this.expression(ast.discriminant);
+
+    let jumpIdxs = [];
+
+    // compile the case tests
+    for (let i = 0; i < ast.cases.length; i++) {
+        if (ast.cases[i].test !== null) {
+            // duplicate stack top as it will be popped for comparison
+            this.emitByte(Opcodes.DUPLICATE);
+            // compile test
+            this.expression(ast.cases[i].test);
+            // compare test
+            this.emitByte(Opcodes.CMP_EQ);
+            // jump if equal
+            jumpIdxs.push(this.emitJump(Opcodes.JUMP_IF_TRUE));
+        } else {
+            // unconditional jump
+            jumpIdxs.push(this.emitJump(Opcodes.JUMP));
+        }
+    }
+
+    for (let i = 0; i < ast.cases.length; i++) {
+        // patch jump
+        this.patchJump(jumpIdxs[i]);
+        // compile case body
+        this.statementList(ast.cases[i].consequent);
+    }
+
+    // pop the discriminant
+    this.emitByte(Opcodes.POP);
 };
 
 Compiler.prototype.letDclr = function (ast) {
@@ -1956,20 +2031,112 @@ Compiler.prototype.expression = function (ast) {
             return this.staticMemberExpr(ast);
         case AstType.IDENTIFIER:
             return this.identifier(ast);
+        case AstType.ASSIGNMENT_EXPR:
+            return this.assignmentExpr(ast);
+        case AstType.UPDATE_EXPR:
+            return this.updateExpr(ast);
         default:
             this.panic("in expression");
     }
 };
 
+Compiler.prototype.updateExpr = function (ast) {
+    if (ast.prefix) {
+        // push 1
+        this.emitBytes([Opcodes.PUSH_INT, 1]);
+        // get variable
+        this.expression(ast.argument);
+        // add/sub one to/from it
+        if (ast.operator === "++") {
+            this.emitByte(Opcodes.ADD);
+        } else {
+            this.emitByte(Opcodes.SUB);
+        }
+        // duplicate value since it will be popped by the set op
+        this.emitByte(Opcodes.DUPLICATE);
+        // set variable
+        this.setLeftHandSideExpr(ast.argument);
+    } else {
+        // post inc (a++)
+
+        // get variable
+        this.expression(ast.argument);
+        // duplicate
+        this.emitByte(Opcodes.DUPLICATE);
+        // push 1
+        this.emitBytes([Opcodes.PUSH_INT, 1]);
+        // swap so they are in the right order
+        this.emitByte(Opcodes.SWAP_TOP_TWO);
+        // add/sub one to/from it
+        if (ast.operator === "++") {
+            this.emitByte(Opcodes.ADD);
+        } else {
+            this.emitByte(Opcodes.SUB);
+        }
+        // set variable
+        this.setLeftHandSideExpr(ast.argument);
+        this.emitByte(Opcodes.POP);
+    }
+};
+
+Compiler.prototype.assignmentExpr = function (ast) {
+    // compile rhs
+    this.expression(ast.right);
+
+    // compile lhs and emit opcode if binary operator
+    switch (ast.operator) {
+        case "+=":
+            this.expression(ast.left);
+            this.emitByte(Opcodes.ADD);
+            break;
+        case "-=":
+            this.expression(ast.left);
+            this.emitByte(Opcodes.SUB);
+            break;
+        case "*=":
+            this.expression(ast.left);
+            this.emitByte(Opcodes.MUL);
+            break;
+        case "/=":
+            this.expression(ast.left);
+            this.emitByte(Opcodes.DIV);
+            break;
+    }
+    // emit set opcode
+    this.setLeftHandSideExpr(ast.left);
+};
+
+Compiler.prototype.setLeftHandSideExpr = function (ast) {
+    if (ast.type === AstType.IDENTIFIER) {
+        this.getOrSetId(ast.value, false);
+    } else {
+        // TODO: member expr
+    }
+};
+
 Compiler.prototype.identifier = function (ast) {
+    this.getOrSetId(ast.value, true);
+};
+
+Compiler.prototype.getOrSetId = function (name, getOp) {
     let idx;
-    if ((idx = this.resolveLocal(ast.value))) {
+
+    if ((idx = this.resolveLocal(name))) {
         // statically resolved local variable
-        this.emitBytes([Opcodes.GET_LOCAL, idx]);
+        if (getOp) {
+            this.emitBytes([Opcodes.GET_LOCAL, idx]);
+        } else {
+            this.emitBytes([Opcodes.SET_LOCAL, idx]);
+        }
     } else {
         // global variable
-        idx = this.addConstant(ast.value);
-        this.emitBytes([Opcodes.GET_FROM_ENV, idx]);
+        idx = this.addConstant(name);
+
+        if (getOp) {
+            this.emitBytes([Opcodes.GET_FROM_ENV, idx]);
+        } else {
+            this.emitBytes([Opcodes.SET_FROM_ENV, idx]);
+        }
     }
 };
 
@@ -2045,10 +2212,10 @@ Compiler.prototype.object = function (ast) {
 };
 
 Compiler.prototype.binary = function (ast) {
-    // compile LHS
-    this.expression(ast.lhs);
     // compile RHS
     this.expression(ast.rhs);
+    // compile LHS
+    this.expression(ast.lhs);
     // emit binary opcode
     switch (ast.operator) {
         case "+":
@@ -2059,6 +2226,20 @@ Compiler.prototype.binary = function (ast) {
             return this.emitByte(Opcodes.MUL);
         case "/":
             return this.emitByte(Opcodes.DIV);
+        case "<":
+            return this.emitByte(Opcodes.CMP_LT);
+        case "<=":
+            return this.emitByte(Opcodes.CMP_LEQ);
+        case ">":
+            return this.emitByte(Opcodes.CMP_GT);
+        case ">=":
+            return this.emitByte(Opcodes.CMP_GEQ);
+        case "==":
+        case "===":
+            return this.emitByte(Opcodes.CMP_EQ);
+        case "!=":
+        case "!==":
+            return this.emitByte(Opcodes.CMP_NEQ);
         default:
             this.panic("Invalid binary operator " + ast.operator);
     }
@@ -2073,7 +2254,13 @@ Compiler.prototype.boolean = function (ast) {
 };
 
 Compiler.prototype.number = function (ast) {
-    this.emitPushConstant(ast.value);
+    let value = ast.value;
+
+    if (value < 0xff) {
+        this.emitBytes([Opcodes.PUSH_INT, value]);
+    } else {
+        this.emitPushConstant(value);
+    }
 };
 
 //------------------------------------------------------------------
@@ -2088,16 +2275,19 @@ Compiler.prototype.endScope = function () {
     this.scopeDepth--;
 
     let local;
-    for (let i = this.locals.length - 1; i >= 0; i--) {
-        local = this.locals[i];
+    while (this.locals.length > 0) {
+        local = this.locals[this.locals.length - 1];
 
-        if (local.depth > this.scopeDepth) {
+        if (local.depth > this.scopeDepth && local.ready) {
             if (local.isCaptured) {
                 // TODO
             } else {
                 this.emitByte(Opcodes.POP);
             }
+
             this.locals.pop();
+        } else {
+            break;
         }
     }
 };
@@ -2109,6 +2299,15 @@ Compiler.prototype.panic = function (msg) {
 //------------------------------------------------------------------
 // Compiler - codegen
 //------------------------------------------------------------------
+
+Compiler.prototype.emitLoop = function (loopStart) {
+    this.emitByte(Opcodes.LOOP);
+
+    let offset = this.function.code.length - loopStart + 2;
+
+    this.emitByte((offset >> 8) & 0xff);
+    this.emitByte(offset & 0xff);
+};
 
 Compiler.prototype.emitJump = function (jumpOpcode) {
     this.emitBytes([jumpOpcode, 0x00, 0x00]);
@@ -2178,8 +2377,13 @@ function literalInstr(name, code, state) {
     state.i += 2;
 }
 
-function jumpInstr(name, code, state) {
-    let idx = state.i + 3 + ((code[state.i + 1] << 8) | code[state.i + 2]);
+function jumpInstr(name, code, state, isLoop) {
+    let idx = state.i + 3;
+    if (isLoop) {
+        idx -= (code[state.i + 1] << 8) | code[state.i + 2];
+    } else {
+        idx += (code[state.i + 1] << 8) | code[state.i + 2];
+    }
 
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
@@ -2251,6 +2455,45 @@ function dis(code, constants) {
                 break;
             case Opcodes.GET_FROM_ENV:
                 constInstr("GET_FROM_ENV", code, constants, state);
+                break;
+            case Opcodes.DUPLICATE:
+                simpleInstr("DUPLICATE", state);
+                break;
+            case Opcodes.CMP_EQ:
+                simpleInstr("CMP_EQ", state);
+                break;
+            case Opcodes.JUMP_IF_TRUE:
+                jumpInstr("JUMP_IF_TRUE", code, state);
+                break;
+            case Opcodes.LOOP:
+                jumpInstr("LOOP", code, state, true);
+                break;
+            case Opcodes.PUSH_INT:
+                literalInstr("PUSH_INT", code, state);
+                break;
+            case Opcodes.SET_LOCAL:
+                literalInstr("SET_LOCAL", code, state);
+                break;
+            case Opcodes.SET_FROM_ENV:
+                constInstr("SET_FROM_ENV", code, constants, state);
+                break;
+            case Opcodes.SWAP_TOP_TWO:
+                simpleInstr("SWAP_TOP_TWO", state);
+                break;
+            case Opcodes.CMP_LT:
+                simpleInstr("CMP_LT", state);
+                break;
+            case Opcodes.CMP_LEQ:
+                simpleInstr("CMP_LEQ", state);
+                break;
+            case Opcodes.CMP_GT:
+                simpleInstr("CMP_GT", state);
+                break;
+            case Opcodes.CMP_GEQ:
+                simpleInstr("CMP_GEQ", state);
+                break;
+            case Opcodes.CMP_NEQ:
+                simpleInstr("CMP_NEQ", state);
                 break;
             default:
                 throw Error("Unknown opcode");
@@ -2386,7 +2629,9 @@ function Vm(fun) {
     // current function
     this.fun = fun;
     // stack pointer
-    this.sp = 0;
+    // TODO: hard coding sp to 1 for now but of course this
+    // should happen naturally as slot[0] will hold `this`
+    this.sp = 1;
     this.stack = initArray(STACK_MAX, 0);
     this.runtime = new Runtime();
     this.inlineCache = new InlineCache();
@@ -2431,10 +2676,58 @@ Vm.prototype.run = function () {
                 this.getById();
                 break;
             case Opcodes.JUMP_IF_FALSE:
-                this.jump(true);
+                this.jump(false, false);
                 break;
             case Opcodes.JUMP:
-                this.jump(false);
+                this.jump(null, true);
+                break;
+            case Opcodes.PUSH_UNDEFINED:
+                this.push(this.runtime.JSUndefined);
+                break;
+            case Opcodes.GET_LOCAL:
+                this.getLocal();
+                break;
+            case Opcodes.GET_FROM_ENV:
+                this.panic("Unimplemented.");
+                break;
+            case Opcodes.DUPLICATE:
+                this.push(this.peek());
+                break;
+            case Opcodes.CMP_EQ:
+                this.cmpEq();
+                break;
+            case Opcodes.JUMP_IF_TRUE:
+                this.jump(true, false);
+                break;
+            case Opcodes.LOOP:
+                this.loop();
+                break;
+            case Opcodes.PUSH_INT:
+                this.pushInt();
+                break;
+            case Opcodes.SET_LOCAL:
+                this.setLocal();
+                break;
+            case Opcodes.SET_FROM_ENV:
+                this.panic("Unimplemented.");
+                break;
+            case Opcodes.SWAP_TOP_TWO:
+                this.swapTopTwo();
+                break;
+            case Opcodes.CMP_LT:
+                this.cmpLt(true);
+                break;
+            case Opcodes.CMP_LEQ:
+                this.cmpLt(false);
+                break;
+            case Opcodes.CMP_GT:
+                this.cmpGt(true);
+                break;
+            case Opcodes.CMP_GEQ:
+                this.cmpGt(false);
+                break;
+            case Opcodes.CMP_NEQ:
+                this.cmpNeq();
                 break;
         }
     }
@@ -2444,10 +2737,78 @@ Vm.prototype.run = function () {
 // VM - instructions
 //------------------------------------------------------------------
 
-Vm.prototype.jump = function (onFalse) {
+Vm.prototype.cmpNeq = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    // TODO: do it properly for different types
+    this.push(lhs !== rhs);
+};
+
+Vm.prototype.cmpGt = function (strict) {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    // TODO: do it properly for different types
+    if (strict) {
+        this.push(lhs > rhs);
+    } else {
+        this.push(lhs >= rhs);
+    }
+};
+
+Vm.prototype.cmpLt = function (strict) {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    // TODO: do it properly for different types
+    if (strict) {
+        this.push(lhs < rhs);
+    } else {
+        this.push(lhs <= rhs);
+    }
+};
+
+Vm.prototype.swapTopTwo = function () {
+    let a = this.pop();
+    let b = this.pop();
+    this.push(a);
+    this.push(b);
+};
+
+Vm.prototype.setLocal = function () {
+    let offset = this.fetch();
+    this.stack[this.fun.fp + offset] = this.peek();
+};
+
+Vm.prototype.pushInt = function () {
+    // Use JSNumber
+    this.push(this.fetch());
+};
+
+Vm.prototype.loop = function () {
+    let jump = (this.fetch() << 8) | this.fetch();
+    this.fun.ip -= jump;
+};
+
+Vm.prototype.cmpEq = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    // TODO: do it properly for different types
+    this.push(this.equal(lhs, rhs));
+};
+
+Vm.prototype.getLocal = function () {
+    let offset = this.fetch();
+    let value = this.stack[this.fun.fp + offset];
+    this.push(value);
+};
+
+Vm.prototype.jump = function (condition, unconditional) {
     let jump = (this.fetch() << 8) | this.fetch();
 
-    if (!onFalse || !this.isTruthy(this.peek())) {
+    if (unconditional || this.isTruthy(this.pop()) === condition) {
         this.fun.ip += jump;
     }
 };
@@ -2504,29 +2865,29 @@ Vm.prototype.newObject = function () {
 };
 
 Vm.prototype.add = function () {
-    let rhs = this.pop();
     let lhs = this.pop();
+    let rhs = this.pop();
 
     this.push(lhs + rhs);
 };
 
 Vm.prototype.sub = function () {
-    let rhs = this.pop();
     let lhs = this.pop();
+    let rhs = this.pop();
 
     this.push(lhs - rhs);
 };
 
 Vm.prototype.mul = function () {
-    let rhs = this.pop();
     let lhs = this.pop();
+    let rhs = this.pop();
 
     this.push(lhs * rhs);
 };
 
 Vm.prototype.div = function () {
-    let rhs = this.pop();
     let lhs = this.pop();
+    let rhs = this.pop();
 
     this.push(lhs / rhs);
 };
@@ -2539,6 +2900,11 @@ Vm.prototype.pushConstant = function () {
 //------------------------------------------------------------------
 // VM - utils
 //------------------------------------------------------------------
+
+Vm.prototype.equal = function (lhs, rhs) {
+    // TODO: replace with JSTrue
+    return lhs === rhs;
+};
 
 Vm.prototype.isTruthy = function (value) {
     // TODO: implement this properly
@@ -2636,22 +3002,4 @@ Vm.prototype.pop = function () {
         let vm = new Vm(fun);
         vm.run();
     };
-
-    // let source = `1 + 1`;
-
-    // let tokenizer = new Tokenizer(source);
-    // let nextToken;
-    // while (true) {
-    //     nextToken = tokenizer.next();
-    //     console.log(nextToken);
-    //     if (nextToken.type === TokenType.EOF) {
-    //         break;
-    //     }
-    // }
-
-    // let parser = new Parser(source);
-    // let ast = parser.parse();
-    // console.log("Successfully parsed!");
-    // console.log(source);
-    // console.log(JSON.stringify(ast, null, "  "));
 })();
