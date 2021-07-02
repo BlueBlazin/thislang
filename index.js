@@ -2057,8 +2057,6 @@ Compiler.prototype.updateExpr = function (ast) {
         // set variable
         this.setLeftHandSideExpr(ast.argument);
     } else {
-        // post inc (a++)
-
         // get variable
         this.expression(ast.argument);
         // duplicate
@@ -2526,12 +2524,38 @@ let JSObjectType = {
     NATIVE:    0x03,
 }
 
+//------------------------------------------------------------------
+// Runtime - Environment
+//------------------------------------------------------------------
+
+function Env(outerEnv) {
+    this.map = {};
+    this.outer = outerEnv;
+}
+
+Env.prototype.get = function (key) {
+    let env = this;
+    while (env !== null) {
+        if (Object.hasOwnProperty(env.map, key)) {
+            return env.map[key];
+        }
+        env = env.outer;
+    }
+
+    return null;
+};
+
+//------------------------------------------------------------------
+// Runtime - Shape
+//------------------------------------------------------------------
+
 function Shape(key, offset, parent) {
     this.parent = parent;
     this.key = key;
     this.offset = offset;
     this.transitions = {};
     this.shapeTable = {};
+    this.cacheIdx = null;
 }
 
 Shape.prototype.transition = function (key) {
@@ -2555,19 +2579,47 @@ Shape.prototype.transition = function (key) {
     return shape;
 };
 
-function JSObject(shape) {
+//------------------------------------------------------------------
+// Runtime - JSObject
+//------------------------------------------------------------------
+
+function JSObject(shape, proto) {
     this.type = JSType.OBJECT;
     this.objectType = JSObjectType.ORDINARY;
-
+    // property values
     this.indexedValues = [];
-
+    // object shape (structure/hidden class)
     this.shape = shape;
+    // prototype
+    this.proto = proto;
+
+    // property values
+    this.mappedValues = {
+        "[[__proto__]]": this.proto,
+    };
 }
 
-JSObject.prototype.set = function (key, value) {
+JSObject.prototype.addProperty = function (key, value, writable) {
     this.shape = this.shape.transition(key);
     this.indexedValues.push(value);
 };
+
+//------------------------------------------------------------------
+// Runtime - JSFunction
+//------------------------------------------------------------------
+
+function JSFunction(shape, proto, objectType, vmFunction) {
+    JSObject.call(this, shape, proto);
+    this.objectType = objectType;
+    this.vmFunction = vmFunction;
+}
+
+JSFunction.prototype = JSObject;
+JSFunction.prototype.constructor = JSFunction;
+
+//------------------------------------------------------------------
+// Runtime - Runtime
+//------------------------------------------------------------------
 
 function Runtime() {
     // primitive constants
@@ -2577,17 +2629,41 @@ function Runtime() {
     this.JSFalse = { type: JSType.BOOL };
 
     this.emptyObjectShape = new Shape("", null, null);
+
+    //---------------------------------------------
+    // Builtin objects
+    //---------------------------------------------
+    // Object prototype
+    this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
+    // Array prototype
+    // String prototype
+    // Function prototype
+    this.JSFunctionPrototype = new JSFunction(
+        this.emptyObjectShape,
+        this.JSObjectPrototype,
+        JSObjectType.NATIVE,
+        null
+    );
 }
 
 Runtime.prototype.newEmptyObject = function () {
-    return new JSObject(this.emptyObjectShape);
+    return new JSObject(this.emptyObjectShape, this.JSObjectPrototype);
+};
+
+Runtime.prototype.newFunction = function (vmFunction) {
+    return new JSFunction(
+        this.emptyObjectShape,
+        this.JSFunctionPrototype,
+        JSObjectType.FUNCTION,
+        vmFunction
+    );
 };
 
 //------------------------------------------------------------------
 // Runtime - VMFunction
 //------------------------------------------------------------------
 
-function VMFunction() {
+function VMFunction(outerEnv) {
     // bytecode associated with this function
     this.code = [];
     // constants associated with this function
@@ -2598,6 +2674,10 @@ function VMFunction() {
     this.fp = 0;
     // scope for dynamically resolved variables
     this.scope = {};
+    // upvars
+    this.upvars = {};
+    // environment
+    this.env = new Env(outerEnv);
 }
 
 //------------------------------------------------------------------
@@ -2827,12 +2907,16 @@ Vm.prototype.getById = function () {
         this.push(object.indexedValues[cacheOffset]);
     } else {
         // slow path
-        if (shape.shapeTable[id] !== undefined) {
+        if (Object.hasOwnProperty(shape.shapeTable, id)) {
+            // look up value in the indexedValues array and add to IC
             let offset = object.shape.shapeTable[id].offset;
 
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
             this.push(object.indexedValues[offset]);
+        } else if (Object.hasOwnProperty(object.mappedValues, id)) {
+            // look up value in the mappedValues table
+            this.push(object.mappedValues[id]);
         } else {
             // walk the prototype chain of object to search
             // for property
@@ -2856,9 +2940,7 @@ Vm.prototype.newObject = function () {
     for (let i = 0; i < numProperties; i++) {
         key = this.pop();
         value = this.pop();
-        // object.shape = object.shape.transition(key);
-        // object.indexedValues.push(value);
-        object.set(key, value);
+        object.addProperty(key, value);
     }
 
     this.push(object);
