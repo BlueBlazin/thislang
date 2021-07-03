@@ -8,7 +8,8 @@
 let DEBUG_VM = true;
 let DEBUG_PARSER = false;
 
-let STACK_MAX = 1024;
+let FRAMES_MAX = 64;
+let STACK_MAX = FRAMES_MAX * 256;
 let MAX_NUM_CONSTANTS = 256;
 
 //==================================================================
@@ -1753,42 +1754,244 @@ Parser.prototype.panic = function (msg) {
 
 // prettier-ignore
 let Opcodes = {
-    POP:              0x00,
-    PUSH_CONSTANT:    0x01,
-    PUSH_TRUE:        0x02,
-    PUSH_FALSE:       0x03,
-    PUSH_NULL:        0x04,
-    PUSH_THIS:        0x05,
-    ADD:              0x06,
-    SUB:              0x07,
-    MUL:              0x08,
-    DIV:              0x09,
-    NEW_OBJECT:       0x0A,
-    NEW_ARRAY:        0x0B,
-    GET_BY_ID:        0x0C,
-    SET_BY_ID:        0x0D,
-    GET_BY_VALUE:     0x0E,
-    SET_BY_VALUE:     0x0F,
-    JUMP_IF_FALSE:    0x10,
-    JUMP:             0x11,
-    PUSH_UNDEFINED:   0x12,
-    GET_LOCAL:        0x13,
-    GET_FROM_ENV:     0x14,
-    DUPLICATE:        0x15,
-    CMP_EQ:           0x16,
-    JUMP_IF_TRUE:     0x17,
-    LOOP:             0x18,
-    PUSH_INT:         0x19,
-    SET_LOCAL:        0x1A,
-    SET_FROM_ENV:     0x1B,
-    SWAP_TOP_TWO:     0x1C,
-    CMP_LT:           0x1E,
-    CMP_LEQ:          0x1F,
-    CMP_GT:           0x20,
-    CMP_GEQ:          0x21,
-    CMP_NEQ:          0x22,
-    CREATE_FUNCTION:  0x23,
-    RETURN:           0x24,
+    POP:               0x00,
+    PUSH_CONSTANT:     0x01,
+    PUSH_TRUE:         0x02,
+    PUSH_FALSE:        0x03,
+    PUSH_NULL:         0x04,
+    PUSH_THIS:         0x05,
+    ADD:               0x06,
+    SUB:               0x07,
+    MUL:               0x08,
+    DIV:               0x09,
+    NEW_OBJECT:        0x0A,
+    NEW_ARRAY:         0x0B,
+    GET_BY_ID:         0x0C,
+    SET_BY_ID:         0x0D,
+    GET_BY_VALUE:      0x0E,
+    SET_BY_VALUE:      0x0F,
+    JUMP_IF_FALSE:     0x10,
+    JUMP:              0x11,
+    PUSH_UNDEFINED:    0x12,
+    GET_LOCAL:         0x13,
+    GET_FROM_ENV:      0x14,
+    DUPLICATE:         0x15,
+    CMP_EQ:            0x16,
+    JUMP_IF_TRUE:      0x17,
+    LOOP:              0x18,
+    PUSH_INT:          0x19,
+    SET_LOCAL:         0x1A,
+    SET_FROM_ENV:      0x1B,
+    SWAP_TOP_TWO:      0x1C,
+    CMP_LT:            0x1E,
+    CMP_LEQ:           0x1F,
+    CMP_GT:            0x20,
+    CMP_GEQ:           0x21,
+    CMP_NEQ:           0x22,
+    CREATE_FUNCTION:   0x23,
+    RETURN:            0x24,
+    CALL_FUNCTION:     0x25,
+    CALL_METHOD:       0x26,
+};
+
+//==================================================================
+// Runtime
+//==================================================================
+
+// prettier-ignore
+let JSType = {
+    NUMBER:     0x00,
+    BOOL:       0x01,
+    NULL:       0x02,
+    UNDEFINED:  0x03,
+    BOOL:       0x04,
+    OBJECT:     0x05,
+    STRING:     0x06,
+};
+
+// prettier-ignore
+let JSObjectType = {
+    ORDINARY:  0x00,
+    ARRAY:     0x01,
+    FUNCTION:  0x02,
+    NATIVE:    0x03,
+}
+
+//------------------------------------------------------------------
+// Runtime - Environment
+//------------------------------------------------------------------
+
+function Env(outerEnv) {
+    this.map = {};
+    this.outer = outerEnv;
+}
+
+Env.prototype.add = function (key, value) {
+    this.map[key] = value;
+};
+
+Env.prototype.get = function (key) {
+    let env = this;
+    while (env !== null) {
+        if (Object.hasOwnProperty(env.map, key)) {
+            return env.map[key];
+        }
+        env = env.outer;
+    }
+
+    return null;
+};
+
+//------------------------------------------------------------------
+// Runtime - Shape
+//------------------------------------------------------------------
+
+function Shape(key, offset, parent) {
+    this.parent = parent;
+    this.key = key;
+    this.offset = offset;
+    this.transitions = {};
+    this.shapeTable = {};
+    this.cacheIdx = null;
+}
+
+Shape.prototype.transition = function (key) {
+    if (this.transitions[key] !== undefined) {
+        return this.transitions[key];
+    }
+
+    let shape = new Shape(
+        key,
+        this.offset !== null ? this.offset + 1 : 0,
+        this
+    );
+
+    // clone parent (this) shapeTable
+    Object.assign(shape.shapeTable, this.shapeTable);
+    // assign self to shapeTable (so its transition contains it)
+    shape.shapeTable[key] = shape;
+
+    this.transitions[key] = shape;
+
+    return shape;
+};
+
+//------------------------------------------------------------------
+// Runtime - JSObject
+//------------------------------------------------------------------
+
+function JSObject(shape, proto) {
+    this.type = JSType.OBJECT;
+    this.objectType = JSObjectType.ORDINARY;
+    // property values
+    this.indexedValues = [];
+    // object shape (structure/hidden class)
+    this.shape = shape;
+    // prototype
+    this.proto = proto;
+
+    // property values
+    this.mappedValues = {
+        "[[__proto__]]": this.proto,
+    };
+}
+
+JSObject.prototype.addProperty = function (key, value, writable) {
+    this.shape = this.shape.transition(key);
+    this.indexedValues.push(value);
+};
+
+//------------------------------------------------------------------
+// Runtime - JSFunction
+//------------------------------------------------------------------
+
+function JSFunction(shape, proto, objectType, vmFunction) {
+    JSObject.call(this, shape, proto);
+    this.objectType = objectType;
+    this.vmFunction = vmFunction;
+}
+
+JSFunction.prototype = JSObject;
+JSFunction.prototype.constructor = JSFunction;
+
+//------------------------------------------------------------------
+// Runtime - Runtime
+//------------------------------------------------------------------
+
+function Runtime() {
+    // primitive constants
+    this.JSNull = { type: JSType.NULL };
+    this.JSUndefined = { type: JSType.UNDEFINED };
+    this.JSTrue = { type: JSType.BOOL };
+    this.JSFalse = { type: JSType.BOOL };
+
+    this.emptyObjectShape = new Shape("", null, null);
+
+    //---------------------------------------------
+    // Builtin objects
+    //---------------------------------------------
+    // Object prototype
+    this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
+    // Array prototype
+    // String prototype
+    // Function prototype
+    this.JSFunctionPrototype = new JSFunction(
+        this.emptyObjectShape,
+        this.JSObjectPrototype,
+        JSObjectType.NATIVE,
+        null
+    );
+}
+
+Runtime.prototype.newEmptyObject = function () {
+    return new JSObject(this.emptyObjectShape, this.JSObjectPrototype);
+};
+
+Runtime.prototype.newFunction = function (vmFunction) {
+    return new JSFunction(
+        this.emptyObjectShape,
+        this.JSFunctionPrototype,
+        JSObjectType.FUNCTION,
+        vmFunction
+    );
+};
+
+//------------------------------------------------------------------
+// Runtime - VMFunction
+//------------------------------------------------------------------
+
+function VMFunction(name, arity) {
+    // function name
+    this.name = name;
+    // number of parameters
+    this.arity = arity;
+    // bytecode associated with this function
+    this.code = [];
+    // constants associated with this function
+    this.constants = [];
+    // upvars
+    this.upvars = {};
+}
+
+//------------------------------------------------------------------
+// Runtime - Inline Cache
+//------------------------------------------------------------------
+
+function InlineCache() {
+    this.cache = {};
+    this.freed = [];
+    this.i = 0;
+}
+
+InlineCache.prototype.addShape = function (shape) {
+    // TOOD: use freed if available
+    this.cache[this.i] = shape;
+    shape.cacheIdx = this.i;
+    return this.i++;
+};
+
+InlineCache.prototype.getShape = function (key) {
+    return this.cache[key];
 };
 
 //==================================================================
@@ -1796,11 +1999,13 @@ let Opcodes = {
 //==================================================================
 
 /** Bytecode Compiler */
-function Compiler() {
-    this.function = new VMFunction(null, 0, null);
+function Compiler(runtime) {
+    this.runtime = runtime;
+    this.function = new VMFunction(null, 0);
     this.scopeDepth = 0;
     this.locals = [{ name: "this", depth: 0, isCaptured: false, ready: true }];
     this.localsStack = [];
+    this.anonCount = 0;
 }
 
 Compiler.prototype.compile = function (ast) {
@@ -1856,7 +2061,9 @@ Compiler.prototype.functionDclr = function (ast) {
     // compile function
     let fun = this.functionExpr(ast);
     // add function name to environment
-    this.function.env.add(name, fun);
+    this.emitPushConstant(fun);
+    let index = this.addConstant(name);
+    this.emitBytes([Opcodes.SET_FROM_ENV, index]);
 };
 
 Compiler.prototype.whileStmt = function (ast) {
@@ -2048,8 +2255,29 @@ Compiler.prototype.expression = function (ast) {
             return this.assignmentExpr(ast);
         case AstType.UPDATE_EXPR:
             return this.updateExpr(ast);
+        case AstType.FUNCTION_EXPR:
+            return this.functionExpr(ast);
+        case AstType.CALL_EXPR:
+            return this.callExpr(ast);
         default:
             this.panic("in expression");
+    }
+};
+
+Compiler.prototype.callExpr = function (ast) {
+    // compile callee
+    this.expression(ast.callee);
+
+    let numArgs = ast.arguments.length;
+    // TODO: limit number of arguments
+    for (let i = 0; i < numArgs; i++) {
+        this.expression(ast.arguments[i]);
+    }
+
+    if (ast.callee.type === AstType.IDENTIFIER) {
+        this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
+    } else {
+        this.emitBytes([Opcodes.CALL_METHOD, numArgs]);
     }
 };
 
@@ -2062,17 +2290,24 @@ Compiler.prototype.functionExpr = function (ast) {
         this.block(ast.body);
     }
 
+    let name = ast.id !== null ? ast.id.value : this.nextAnon();
+
     // compile function
     let fun = this.withFunctionCtx(
-        ast.id.value,
+        name,
         ast.params.length,
         compileFn.bind(this, ast)
     );
 
     // emit function creation opcode
-    this.emitFunction(fun);
+    this.emitFunction(this.runtime.newFunction(fun));
 
     return fun;
+};
+
+Compiler.prototype.nextAnon = function () {
+    let id = this.anonCount++;
+    return "<anonymous " + id + ">";
 };
 
 Compiler.prototype.block = function (statements) {
@@ -2475,7 +2710,7 @@ function jumpInstr(name, code, state, isLoop) {
 
 function functionInstr(name, code, constants, state) {
     let idx = code[state.i + 1];
-    let fun = constants[idx];
+    let fun = constants[idx].vmFunction;
 
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
@@ -2597,6 +2832,12 @@ function dis(code, constants, name) {
             case Opcodes.RETURN:
                 simpleInstr("RETURN", state);
                 break;
+            case Opcodes.CALL_FUNCTION:
+                literalInstr("CALL_FUNCTION", code, state);
+                break;
+            case Opcodes.CALL_METHOD:
+                literalInstr("CALL_METHOD", code, state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -2613,233 +2854,44 @@ function dis(code, constants, name) {
 }
 
 //==================================================================
-// Runtime
+// VM
 //==================================================================
 
-// prettier-ignore
-let JSType = {
-    NUMBER:     0x00,
-    BOOL:       0x01,
-    NULL:       0x02,
-    UNDEFINED:  0x03,
-    BOOL:       0x04,
-    OBJECT:     0x05,
-    STRING:     0x06,
-};
-
-// prettier-ignore
-let JSObjectType = {
-    ORDINARY:  0x00,
-    ARRAY:     0x01,
-    FUNCTION:  0x02,
-    NATIVE:    0x03,
-}
-
-//------------------------------------------------------------------
-// Runtime - Environment
-//------------------------------------------------------------------
-
-function Env(outerEnv) {
-    this.map = {};
-    this.outer = outerEnv;
-}
-
-Env.prototype.add = function (key, value) {
-    this.map[key] = value;
-};
-
-Env.prototype.get = function (key) {
-    let env = this;
-    while (env !== null) {
-        if (Object.hasOwnProperty(env.map, key)) {
-            return env.map[key];
-        }
-        env = env.outer;
-    }
-
-    return null;
-};
-
-//------------------------------------------------------------------
-// Runtime - Shape
-//------------------------------------------------------------------
-
-function Shape(key, offset, parent) {
-    this.parent = parent;
-    this.key = key;
-    this.offset = offset;
-    this.transitions = {};
-    this.shapeTable = {};
-    this.cacheIdx = null;
-}
-
-Shape.prototype.transition = function (key) {
-    if (this.transitions[key] !== undefined) {
-        return this.transitions[key];
-    }
-
-    let shape = new Shape(
-        key,
-        this.offset !== null ? this.offset + 1 : 0,
-        this
-    );
-
-    // clone parent (this) shapeTable
-    Object.assign(shape.shapeTable, this.shapeTable);
-    // assign self to shapeTable (so its transition contains it)
-    shape.shapeTable[key] = shape;
-
-    this.transitions[key] = shape;
-
-    return shape;
-};
-
-//------------------------------------------------------------------
-// Runtime - JSObject
-//------------------------------------------------------------------
-
-function JSObject(shape, proto) {
-    this.type = JSType.OBJECT;
-    this.objectType = JSObjectType.ORDINARY;
-    // property values
-    this.indexedValues = [];
-    // object shape (structure/hidden class)
-    this.shape = shape;
-    // prototype
-    this.proto = proto;
-
-    // property values
-    this.mappedValues = {
-        "[[__proto__]]": this.proto,
-    };
-}
-
-JSObject.prototype.addProperty = function (key, value, writable) {
-    this.shape = this.shape.transition(key);
-    this.indexedValues.push(value);
-};
-
-//------------------------------------------------------------------
-// Runtime - JSFunction
-//------------------------------------------------------------------
-
-function JSFunction(shape, proto, objectType, vmFunction) {
-    JSObject.call(this, shape, proto);
-    this.objectType = objectType;
-    this.vmFunction = vmFunction;
-}
-
-JSFunction.prototype = JSObject;
-JSFunction.prototype.constructor = JSFunction;
-
-//------------------------------------------------------------------
-// Runtime - Runtime
-//------------------------------------------------------------------
-
-function Runtime() {
-    // primitive constants
-    this.JSNull = { type: JSType.NULL };
-    this.JSUndefined = { type: JSType.UNDEFINED };
-    this.JSTrue = { type: JSType.BOOL };
-    this.JSFalse = { type: JSType.BOOL };
-
-    this.emptyObjectShape = new Shape("", null, null);
-
-    //---------------------------------------------
-    // Builtin objects
-    //---------------------------------------------
-    // Object prototype
-    this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
-    // Array prototype
-    // String prototype
-    // Function prototype
-    this.JSFunctionPrototype = new JSFunction(
-        this.emptyObjectShape,
-        this.JSObjectPrototype,
-        JSObjectType.NATIVE,
-        null
-    );
-}
-
-Runtime.prototype.newEmptyObject = function () {
-    return new JSObject(this.emptyObjectShape, this.JSObjectPrototype);
-};
-
-Runtime.prototype.newFunction = function (vmFunction) {
-    return new JSFunction(
-        this.emptyObjectShape,
-        this.JSFunctionPrototype,
-        JSObjectType.FUNCTION,
-        vmFunction
-    );
-};
-
-//------------------------------------------------------------------
-// Runtime - VMFunction
-//------------------------------------------------------------------
-
-function VMFunction(name, arity, outerEnv) {
-    // function name
-    this.name = name;
-    // number of parameters
-    this.arity = arity;
-    // bytecode associated with this function
-    this.code = [];
-    // constants associated with this function
-    this.constants = [];
+function CallFrame(fun, fp, outerEnv) {
+    // function
+    this.fun = fun;
     // instruction pointer
     this.ip = 0;
     // frame pointer
-    this.fp = 0;
-    // scope for dynamically resolved variables
-    this.scope = {};
-    // upvars
-    this.upvars = {};
+    this.fp = fp;
     // environment
     this.env = new Env(outerEnv);
 }
 
-//------------------------------------------------------------------
-// Runtime - Inline Cache
-//------------------------------------------------------------------
-
-function InlineCache() {
-    this.cache = {};
-    this.freed = [];
-    this.i = 0;
-}
-
-InlineCache.prototype.addShape = function (shape) {
-    // TOOD: use freed if available
-    this.cache[this.i] = shape;
-    shape.cacheIdx = this.i;
-    return this.i++;
-};
-
-InlineCache.prototype.getShape = function (key) {
-    return this.cache[key];
-};
-
-//==================================================================
-// VM
-//==================================================================
-
-function Vm(fun) {
-    // current function
-    this.fun = fun;
+function Vm(fun, runtime) {
     // stack pointer
-    // TODO: hard coding sp to 1 for now but of course this
-    // should happen naturally as slot[0] will hold `this`
-    this.sp = 1;
+    this.sp = 0;
+    // stack
     this.stack = initArray(STACK_MAX, 0);
-    this.runtime = new Runtime();
+    // runtime
+    this.runtime = runtime;
+    // IC
     this.inlineCache = new InlineCache();
+    // call frames
+    this.frames = [new CallFrame(fun, 0, null)];
+    // current function
+    this.currentFun = fun;
+    // current frame
+    this.currentFrame = this.frames[0];
+
+    // push `this` on stack slot 0
+    this.push(runtime.newEmptyObject());
 }
 
 /** Run VM */
 Vm.prototype.run = function () {
     // main interpreter loop
-    while (this.fun.ip < this.fun.code.length) {
+    while (this.currentFrame.ip < this.currentFun.code.length) {
         switch (this.fetch()) {
             case Opcodes.POP:
                 console.log("Popping: ", this.pop());
@@ -2855,6 +2907,9 @@ Vm.prototype.run = function () {
                 break;
             case Opcodes.PUSH_NULL:
                 this.push(null);
+                break;
+            case Opcodes.PUSH_THIS:
+                this.pushThis();
                 break;
             case Opcodes.ADD:
                 this.add();
@@ -2873,6 +2928,15 @@ Vm.prototype.run = function () {
                 break;
             case Opcodes.GET_BY_ID:
                 this.getById();
+                break;
+            case Opcodes.SET_BY_ID:
+                this.panic("Unimplemented.");
+                break;
+            case Opcodes.GET_BY_VALUE:
+                this.panic("Unimplemented.");
+                break;
+            case Opcodes.SET_BY_VALUE:
+                this.panic("Unimplemented.");
                 break;
             case Opcodes.JUMP_IF_FALSE:
                 this.jump(false, false);
@@ -2928,6 +2992,18 @@ Vm.prototype.run = function () {
             case Opcodes.CMP_NEQ:
                 this.cmpNeq();
                 break;
+            case Opcodes.CREATE_FUNCTION:
+                this.createFunction();
+                break;
+            case Opcodes.RETURN:
+                this.return();
+                break;
+            case Opcodes.CALL_FUNCTION:
+                this.callFunction();
+                break;
+            case Opcodes.CALL_METHOD:
+                this.callMethod();
+                break;
         }
     }
 };
@@ -2935,6 +3011,65 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.callMethod = function () {
+    let numArgs = this.fetch();
+
+    let callee = this.stack[this.sp - 1 - numArgs];
+
+    if (callee.objectType === JSObjectType.FUNCTION) {
+        // set `this` to object
+        this.stack[this.sp - 1 - numArgs] = this.runtime.JSUndefined;
+        this.initFunctionCall(callee.vmFunction, numArgs);
+    } else if (callee.objectType === JSObjectType.NATIVE) {
+        // TODO
+    } else {
+        this.panic("Value not callable.");
+    }
+};
+
+Vm.prototype.callFunction = function () {
+    let numArgs = this.fetch();
+
+    let callee = this.stack[this.sp - 1 - numArgs];
+
+    if (callee.objectType === JSObjectType.FUNCTION) {
+        // set `this` to undefined
+        this.stack[this.sp - 1 - numArgs] = this.runtime.JSUndefined;
+        this.initFunctionCall(callee.vmFunction, numArgs);
+    } else if (callee.objectType === JSObjectType.NATIVE) {
+        // TODO
+    } else {
+        this.panic("Value not callable.");
+    }
+};
+
+Vm.prototype.initFunctionCall = function (fun, numArgs) {
+    let frame = new CallFrame(
+        fun,
+        this.sp - 1 - numArgs,
+        this.currentFrame.env
+    );
+
+    this.frames.push(frame);
+    this.currentFun = fun;
+    this.currentFrame = frame;
+};
+
+Vm.prototype.return = function () {
+    let returnValue = this.pop();
+
+    let poppedFrame = this.frames.pop();
+    // TODO: close upvars
+    this.sp = poppedFrame.fp;
+
+    this.push(returnValue);
+};
+
+Vm.prototype.createFunction = function () {
+    this.push(this.fetchConstant());
+    // TODO: handle upvars
+};
 
 Vm.prototype.cmpNeq = function () {
     let lhs = this.pop();
@@ -2977,7 +3112,7 @@ Vm.prototype.swapTopTwo = function () {
 
 Vm.prototype.setLocal = function () {
     let offset = this.fetch();
-    this.stack[this.fun.fp + offset] = this.peek();
+    this.stack[this.currentFrame.fp + offset] = this.peek();
 };
 
 Vm.prototype.pushInt = function () {
@@ -2987,7 +3122,7 @@ Vm.prototype.pushInt = function () {
 
 Vm.prototype.loop = function () {
     let jump = (this.fetch() << 8) | this.fetch();
-    this.fun.ip -= jump;
+    this.currentFrame.ip -= jump;
 };
 
 Vm.prototype.cmpEq = function () {
@@ -3000,7 +3135,7 @@ Vm.prototype.cmpEq = function () {
 
 Vm.prototype.getLocal = function () {
     let offset = this.fetch();
-    let value = this.stack[this.fun.fp + offset];
+    let value = this.stack[this.currentFrame.fp + offset];
     this.push(value);
 };
 
@@ -3008,7 +3143,7 @@ Vm.prototype.jump = function (condition, unconditional) {
     let jump = (this.fetch() << 8) | this.fetch();
 
     if (unconditional || this.isTruthy(this.pop()) === condition) {
-        this.fun.ip += jump;
+        this.currentFrame.ip += jump;
     }
 };
 
@@ -3046,8 +3181,8 @@ Vm.prototype.getById = function () {
 };
 
 Vm.prototype.modifyCodeForIC = function (cacheIdx, cacheOffset) {
-    this.fun.code[this.fun.ip - 1] = cacheOffset;
-    this.fun.code[this.fun.ip - 2] = cacheIdx;
+    this.currentFun.code[this.currentFrame.ip - 1] = cacheOffset;
+    this.currentFun.code[this.currentFrame.ip - 2] = cacheIdx;
 };
 
 Vm.prototype.newObject = function () {
@@ -3093,6 +3228,11 @@ Vm.prototype.div = function () {
     this.push(lhs / rhs);
 };
 
+Vm.prototype.pushThis = function () {
+    let value = this.stack[this.currentFrame.fp];
+    this.push(value);
+};
+
 Vm.prototype.pushConstant = function () {
     let value = this.fetchConstant();
     this.push(value);
@@ -3116,16 +3256,16 @@ Vm.prototype.isTruthy = function (value) {
 Vm.prototype.fetchConstant = function () {
     let index = this.fetch();
 
-    if (this.fun.constants.length <= index) {
+    if (this.currentFun.constants.length <= index) {
         this.panic("Invalid constant table index.");
     }
 
-    return this.fun.constants[index];
+    return this.currentFun.constants[index];
 };
 
 /** Fetch next opcode */
 Vm.prototype.fetch = function () {
-    return this.fun.code[this.fun.ip++];
+    return this.currentFun.code[this.currentFrame.ip++];
 };
 
 /** Panic */
@@ -3183,10 +3323,15 @@ Vm.prototype.pop = function () {
     compileBtn.onclick = function () {
         let textArea = document.getElementById("source-code");
         let source = textArea.value;
+
         let parser = new Parser(source);
         let ast = parser.parse();
-        let compiler = new Compiler();
+
+        let runtime = new Runtime();
+
+        let compiler = new Compiler(runtime);
         let fun = compiler.compile(ast);
+
         dis(fun.code, fun.constants, "<script>");
     };
 
@@ -3197,10 +3342,12 @@ Vm.prototype.pop = function () {
         let parser = new Parser(source);
         let ast = parser.parse();
 
-        let compiler = new Compiler();
+        let runtime = new Runtime();
+
+        let compiler = new Compiler(runtime);
         let fun = compiler.compile(ast);
 
-        let vm = new Vm(fun);
+        let vm = new Vm(fun, runtime);
         vm.run();
     };
 })();
