@@ -1787,6 +1787,8 @@ let Opcodes = {
     CMP_GT:           0x20,
     CMP_GEQ:          0x21,
     CMP_NEQ:          0x22,
+    CREATE_FUNCTION:  0x23,
+    RETURN:           0x24,
 };
 
 //==================================================================
@@ -1795,9 +1797,10 @@ let Opcodes = {
 
 /** Bytecode Compiler */
 function Compiler() {
-    this.function = new VMFunction();
+    this.function = new VMFunction(null, 0, null);
     this.scopeDepth = 0;
-    this.locals = [{ name: "", depth: 0, isCaptured: false, ready: true }];
+    this.locals = [{ name: "this", depth: 0, isCaptured: false, ready: true }];
+    this.localsStack = [];
 }
 
 Compiler.prototype.compile = function (ast) {
@@ -1818,6 +1821,8 @@ Compiler.prototype.stmtOrDclr = function (ast) {
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
+        case AstType.FUNCTION_DCLR:
+            return this.functionDclr(ast);
         default:
             this.panic(ast.type);
     }
@@ -1844,6 +1849,14 @@ Compiler.prototype.statement = function (ast) {
         default:
             this.panic(ast.type);
     }
+};
+
+Compiler.prototype.functionDclr = function (ast) {
+    let name = ast.id.value;
+    // compile function
+    let fun = this.functionExpr(ast);
+    // add function name to environment
+    this.function.env.add(name, fun);
 };
 
 Compiler.prototype.whileStmt = function (ast) {
@@ -2037,6 +2050,41 @@ Compiler.prototype.expression = function (ast) {
             return this.updateExpr(ast);
         default:
             this.panic("in expression");
+    }
+};
+
+Compiler.prototype.functionExpr = function (ast) {
+    function compileFn(ast) {
+        this.beginScope();
+        // compile parameters
+        this.parameters(ast.params);
+        // compile function body
+        this.block(ast.body);
+    }
+
+    // compile function
+    let fun = this.withFunctionCtx(
+        ast.id.value,
+        ast.params.length,
+        compileFn.bind(this, ast)
+    );
+
+    // emit function creation opcode
+    this.emitFunction(fun);
+
+    return fun;
+};
+
+Compiler.prototype.block = function (statements) {
+    for (let i = 0; i < statements.length; i++) {
+        this.stmtOrDclr(statements[i]);
+    }
+};
+
+Compiler.prototype.parameters = function (params) {
+    for (let i = 0; i < params.length; i++) {
+        this.declareLocal(params[i].value);
+        this.markReady();
     }
 };
 
@@ -2265,6 +2313,28 @@ Compiler.prototype.number = function (ast) {
 // Compiler - utils
 //------------------------------------------------------------------
 
+Compiler.prototype.withFunctionCtx = function (name, arity, compileFn) {
+    let scopeDepth = this.scopeDepth;
+    let fun = this.function;
+    this.localsStack.push(this.locals);
+
+    this.scopeDepth = 0;
+    this.function = new VMFunction(name, arity, fun.env);
+    this.locals = [{ name: "this", depth: 0, isCaptured: false, ready: true }];
+
+    compileFn();
+
+    this.scopeDepth = scopeDepth;
+    this.locals = this.localsStack.pop();
+
+    this.emitReturn();
+
+    let newFun = this.function;
+    this.function = fun;
+
+    return newFun;
+};
+
 Compiler.prototype.beginScope = function () {
     this.scopeDepth++;
 };
@@ -2297,6 +2367,16 @@ Compiler.prototype.panic = function (msg) {
 //------------------------------------------------------------------
 // Compiler - codegen
 //------------------------------------------------------------------
+
+Compiler.prototype.emitReturn = function () {
+    this.emitByte(Opcodes.PUSH_UNDEFINED);
+    this.emitByte(Opcodes.RETURN);
+};
+
+Compiler.prototype.emitFunction = function (fun) {
+    let index = this.addConstant(fun);
+    this.emitBytes([Opcodes.CREATE_FUNCTION, index]);
+};
 
 Compiler.prototype.emitLoop = function (loopStart) {
     this.emitByte(Opcodes.LOOP);
@@ -2393,8 +2473,26 @@ function jumpInstr(name, code, state, isLoop) {
     state.i += 3;
 }
 
-function dis(code, constants) {
-    let state = { i: 0, disassembly: [] };
+function functionInstr(name, code, constants, state) {
+    let idx = code[state.i + 1];
+    let fun = constants[idx];
+
+    state.disassembly.push(
+        String(state.i).padStart(5, "0") +
+            ":    " +
+            name.padEnd(14, " ") +
+            " " +
+            fun.name
+    );
+    state.i += 2;
+
+    state.functions.push(fun);
+}
+
+function dis(code, constants, name) {
+    let state = { i: 0, disassembly: [], functions: [] };
+
+    state.disassembly.push("Code in function " + name + ":");
 
     while (state.i < code.length) {
         switch (code[state.i]) {
@@ -2493,12 +2591,25 @@ function dis(code, constants) {
             case Opcodes.CMP_NEQ:
                 simpleInstr("CMP_NEQ", state);
                 break;
+            case Opcodes.CREATE_FUNCTION:
+                functionInstr("CREATE_FUNCTION", code, constants, state);
+                break;
+            case Opcodes.RETURN:
+                simpleInstr("RETURN", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
     }
 
+    let fun;
+    while (state.functions.length > 0) {
+        fun = state.functions.pop();
+        dis(fun.code, fun.constants, fun.name);
+    }
+
     console.log(state.disassembly.join("\n"));
+    console.log("\n");
 }
 
 //==================================================================
@@ -2532,6 +2643,10 @@ function Env(outerEnv) {
     this.map = {};
     this.outer = outerEnv;
 }
+
+Env.prototype.add = function (key, value) {
+    this.map[key] = value;
+};
 
 Env.prototype.get = function (key) {
     let env = this;
@@ -2663,7 +2778,11 @@ Runtime.prototype.newFunction = function (vmFunction) {
 // Runtime - VMFunction
 //------------------------------------------------------------------
 
-function VMFunction(outerEnv) {
+function VMFunction(name, arity, outerEnv) {
+    // function name
+    this.name = name;
+    // number of parameters
+    this.arity = arity;
     // bytecode associated with this function
     this.code = [];
     // constants associated with this function
@@ -3068,7 +3187,7 @@ Vm.prototype.pop = function () {
         let ast = parser.parse();
         let compiler = new Compiler();
         let fun = compiler.compile(ast);
-        dis(fun.code, fun.constants);
+        dis(fun.code, fun.constants, "<script>");
     };
 
     runBtn.onclick = function () {
