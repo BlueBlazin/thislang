@@ -1833,7 +1833,7 @@ Env.prototype.add = function (key, value) {
 Env.prototype.get = function (key) {
     let env = this;
     while (env !== null) {
-        if (Object.hasOwnProperty(env.map, key)) {
+        if (env.map.hasOwnProperty(key)) {
             return env.map[key];
         }
         env = env.outer;
@@ -2062,11 +2062,12 @@ Compiler.prototype.statement = function (ast) {
 Compiler.prototype.functionDclr = function (ast) {
     let name = ast.id.value;
     // compile function
-    let fun = this.functionExpr(ast);
-    // add function name to environment
-    this.emitPushConstant(fun);
+    this.functionExpr(ast);
+    // add function to environment
     let index = this.addConstant(name);
     this.emitBytes([Opcodes.SET_FROM_ENV, index]);
+    // pop function off the stack
+    this.emitByte(Opcodes.POP);
 };
 
 Compiler.prototype.whileStmt = function (ast) {
@@ -2310,16 +2311,16 @@ Compiler.prototype.functionExpr = function (ast) {
     let name = ast.id !== null ? ast.id.value : this.nextAnon();
 
     // compile function
-    let fun = this.withFunctionCtx(
+    let vmFun = this.withFunctionCtx(
         name,
         ast.params.length,
         compileFn.bind(this, ast)
     );
 
-    // emit function creation opcode
-    this.emitFunction(this.runtime.newFunction(fun));
+    let fun = this.runtime.newFunction(vmFun);
 
-    return fun;
+    // emit function creation opcode
+    this.emitFunction(fun);
 };
 
 Compiler.prototype.nextAnon = function () {
@@ -2689,6 +2690,14 @@ Compiler.prototype.emitBytes = function (bytes) {
 // Disassembler
 //==================================================================
 
+function display(value) {
+    if (value.objectType === JSObjectType.FUNCTION) {
+        return "[function]";
+    } else {
+        return value;
+    }
+}
+
 function simpleInstr(name, state) {
     state.disassembly.push(
         String(state.i).padStart(5, "0") + ":    " + name.padEnd(14, " ")
@@ -2703,7 +2712,7 @@ function constInstr(name, code, constants, state) {
             ":    " +
             name.padEnd(14, " ") +
             " " +
-            constants[idx]
+            display(constants[idx])
     );
     state.i += 2;
 }
@@ -2986,7 +2995,7 @@ Vm.prototype.run = function () {
                 this.getLocal();
                 break;
             case Opcodes.GET_FROM_ENV:
-                this.panic("Unimplemented.");
+                this.getFromEnv();
                 break;
             case Opcodes.DUPLICATE:
                 this.push(this.peek());
@@ -3007,7 +3016,7 @@ Vm.prototype.run = function () {
                 this.setLocal();
                 break;
             case Opcodes.SET_FROM_ENV:
-                this.panic("Unimplemented.");
+                this.setFromEnv();
                 break;
             case Opcodes.SWAP_TOP_TWO:
                 this.swapTopTwo();
@@ -3046,6 +3055,24 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.setFromEnv = function () {
+    let id = this.fetchConstant();
+    let value = this.peek();
+
+    this.currentFrame.env.add(id, value);
+};
+
+Vm.prototype.getFromEnv = function () {
+    let id = this.fetchConstant();
+    let value = this.currentFrame.env.get(id);
+
+    if (value !== null) {
+        this.push(value);
+    } else {
+        this.push(this.runtime.JSUndefined);
+    }
+};
 
 Vm.prototype.callMethod = function () {
     let numArgs = this.fetch();
