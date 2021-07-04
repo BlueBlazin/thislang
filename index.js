@@ -2265,8 +2265,22 @@ Compiler.prototype.expression = function (ast) {
 };
 
 Compiler.prototype.callExpr = function (ast) {
-    // compile callee
-    this.expression(ast.callee);
+    let callee = ast.callee;
+    if (callee.type === AstType.IDENTIFIER) {
+        // compile callee
+        this.expression(callee);
+    } else {
+        // compile object
+        this.expression(callee.object);
+        // duplicate object
+        this.emitByte(Opcodes.DUPLICATE);
+        // emit get opcode
+        if (callee.type === AstType.STATIC_MEMBER_EXPR) {
+            this.staticMemberProperty(callee.property);
+        } else {
+            // TODO: computed member expr
+        }
+    }
 
     let numArgs = ast.arguments.length;
     // TODO: limit number of arguments
@@ -2392,6 +2406,7 @@ Compiler.prototype.setLeftHandSideExpr = function (ast) {
         this.getOrSetId(ast.value, false);
     } else {
         // TODO: member expr
+        this.panic("Unimplemented.");
     }
 };
 
@@ -2439,10 +2454,15 @@ Compiler.prototype.resolveLocal = function (name) {
 Compiler.prototype.staticMemberExpr = function (ast) {
     // compile lhs of `.`
     this.expression(ast.object);
+    // emit property
+    this.staticMemberProperty(ast.property);
+};
+
+Compiler.prototype.staticMemberProperty = function (ast) {
     // emit opcode
     this.emitByte(Opcodes.GET_BY_ID);
     // emit constant index of property id
-    let index = this.addConstant(ast.property);
+    let index = this.addConstant(ast);
     this.emitByte(index);
     // ------ Inline cache info ----------
     // TODO: handle 8 bit limit for IC
@@ -3015,11 +3035,13 @@ Vm.prototype.run = function () {
 Vm.prototype.callMethod = function () {
     let numArgs = this.fetch();
 
-    let callee = this.stack[this.sp - 1 - numArgs];
+    let idx = this.sp - 1 - numArgs;
+    let callee = this.stack[idx];
+    let object = this.stack[idx - 1];
 
     if (callee.objectType === JSObjectType.FUNCTION) {
         // set `this` to object
-        this.stack[this.sp - 1 - numArgs] = this.runtime.JSUndefined;
+        this.stack[idx] = object;
         this.initFunctionCall(callee.vmFunction, numArgs);
     } else if (callee.objectType === JSObjectType.NATIVE) {
         // TODO
