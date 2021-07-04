@@ -2263,9 +2263,20 @@ Compiler.prototype.expression = function (ast) {
             return this.functionExpr(ast);
         case AstType.CALL_EXPR:
             return this.callExpr(ast);
+        case AstType.COMPUTED_MEMBER_EXPR:
+            return this.computedMemberExpr(ast);
         default:
             this.panic("in expression");
     }
+};
+
+Compiler.prototype.computedMemberExpr = function (ast) {
+    // compile object
+    this.expression(ast.object);
+    // compile property value
+    this.expression(ast.property);
+    // emit opcode
+    this.emitByte(Opcodes.GET_BY_VALUE);
 };
 
 Compiler.prototype.callExpr = function (ast) {
@@ -2414,8 +2425,12 @@ Compiler.prototype.setLeftHandSideExpr = function (ast) {
         // add property name to constants
         this.staticMemberProperty(Opcodes.SET_BY_ID, ast.property);
     } else if (ast.type === AstType.COMPUTED_MEMBER_EXPR) {
-        // TODO: computed member expression
-        this.panic("Unimplemented.");
+        // compile object
+        this.expression(ast.object);
+        // compile property name
+        this.expression(ast.property);
+        // emit opcode
+        this.emitByte(Opcodes.SET_BY_VALUE);
     } else {
         this.panic("Invalid LeftHandSide expression.");
     }
@@ -2816,6 +2831,12 @@ function dis(code, constants, name) {
                 // skip inline caching details
                 state.i += 2;
                 break;
+            case Opcodes.GET_BY_VALUE:
+                simpleInstr("GET_BY_VALUE", state);
+                break;
+            case Opcodes.SET_BY_VALUE:
+                simpleInstr("SET_BY_VALUE", state);
+                break;
             case Opcodes.JUMP_IF_FALSE:
                 jumpInstr("JUMP_IF_FALSE", code, state);
                 break;
@@ -2977,10 +2998,10 @@ Vm.prototype.run = function () {
                 this.setById();
                 break;
             case Opcodes.GET_BY_VALUE:
-                this.panic("Unimplemented.");
+                this.getByValue();
                 break;
             case Opcodes.SET_BY_VALUE:
-                this.panic("Unimplemented.");
+                this.setByValue();
                 break;
             case Opcodes.JUMP_IF_FALSE:
                 this.jump(false, false);
@@ -3211,6 +3232,51 @@ Vm.prototype.jump = function (condition, unconditional) {
     }
 };
 
+Vm.prototype.setByValue = function () {
+    // pop id
+    let id = this.pop();
+    // pop object
+    let object = this.pop();
+    // pop value
+    let value = this.pop();
+    // get shape
+    let shape = object.shape;
+
+    if (shape.shapeTable.hasOwnProperty(id)) {
+        let offset = shape.shapeTable[id].offset;
+
+        this.getOrSetId(object.indexedValues, offset, true, value);
+    } else if (object.mappedValues.hasOwnProperty(id)) {
+        this.getOrSetId(object.mappedValues, id, true, value);
+    } else {
+        // add property on object
+        object.addProperty(id, value);
+        // push value on top of stack
+        this.push(value);
+    }
+};
+
+Vm.prototype.getByValue = function () {
+    // pop id
+    let id = this.pop();
+    // pop object
+    let object = this.pop();
+    // get shape
+    let shape = object.shape;
+
+    if (shape.shapeTable.hasOwnProperty(id)) {
+        let offset = shape.shapeTable[id].offset;
+
+        this.getOrSetId(object.indexedValues, offset, false, null);
+    } else if (object.mappedValues.hasOwnProperty(id)) {
+        this.getOrSetId(object.mappedValues, id, false, null);
+    } else {
+        // walk the prototype chain and search for property
+        // TODO: implement prototype search
+        this.panic("Unimplemented.");
+    }
+};
+
 Vm.prototype.setById = function () {
     // pop object on which to set property
     let object = this.pop();
@@ -3248,6 +3314,8 @@ Vm.prototype.cachedSet = function (object, value) {
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
             this.getOrSetId(object.indexedValues, offset, true, value);
+        } else if (object.mappedValues.hasOwnProperty(id)) {
+            this.getOrSetId(object.mappedValues, id, true, value);
         } else {
             // add property on object
             object.addProperty(id, value);
@@ -3276,7 +3344,7 @@ Vm.prototype.cachedGet = function (object) {
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
             this.getOrSetId(object.indexedValues, offset, false, null);
-        } else if (Object.hasOwnProperty(object.mappedValues, id)) {
+        } else if (object.mappedValues.hasOwnProperty(id)) {
             // look up mappedValues
             this.getOrSetId(object.mappedValues, id, false, null);
         } else {
