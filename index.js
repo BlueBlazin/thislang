@@ -3190,17 +3190,17 @@ Vm.prototype.setById = function () {
     // pop value
     let value = this.pop();
     // set property value
-    this.cachedAccess(object, true, value);
+    this.cachedSet(object, value);
 };
 
 Vm.prototype.getById = function () {
     // pop object off of the stack
     let object = this.pop();
     // get property value
-    this.cachedAccess(object, false, null);
+    this.cachedGet(object);
 };
 
-Vm.prototype.cachedAccess = function (object, setById, value) {
+Vm.prototype.cachedSet = function (object, value) {
     // get shape
     let shape = object.shape;
     // fetch id, shape index, and offset
@@ -3209,21 +3209,51 @@ Vm.prototype.cachedAccess = function (object, setById, value) {
     let cacheOffset = this.fetch();
 
     if (shape.cacheIdx === cacheIdx) {
-        this.getOrSetId(object.indexedValues, cacheOffset, setById, value);
+        console.log("USING IC FOR SET_BY_ID");
+        this.getOrSetId(object.indexedValues, cacheOffset, true, value);
     } else {
         // slow path
         if (shape.shapeTable.hasOwnProperty(id)) {
+            console.log("SETTING IC FOR SET_BY_ID");
             // look up value in the indexedValues array and add to IC
             let offset = shape.shapeTable[id].offset;
 
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
-            this.getOrSetId(object.indexedValues, offset, setById, value);
-        } else if (Object.hasOwnProperty(object.mappedValues, id)) {
-            this.getOrSetId(object.mappedValues, id, setById, value);
+            this.getOrSetId(object.indexedValues, offset, true, value);
         } else {
-            // walk the prototype chain of object to search
-            // for property
+            // add property on object
+            object.addProperty(id, value);
+            // push value on stack
+            this.push(value);
+        }
+    }
+};
+
+Vm.prototype.cachedGet = function (object) {
+    // get shape
+    let shape = object.shape;
+    // fetch id, shape index, and offset
+    let id = this.fetchConstant();
+    let cacheIdx = this.fetch();
+    let cacheOffset = this.fetch();
+
+    if (shape.cacheIdx === cacheIdx) {
+        this.getOrSetId(object.indexedValues, cacheOffset, false, null);
+    } else {
+        // slow path
+        if (shape.shapeTable.hasOwnProperty(id)) {
+            // look up value in the indexedValues array and add to IC
+            let offset = shape.shapeTable[id].offset;
+            // modify IC
+            this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
+
+            this.getOrSetId(object.indexedValues, offset, false, null);
+        } else if (Object.hasOwnProperty(object.mappedValues, id)) {
+            // look up mappedValues
+            this.getOrSetId(object.mappedValues, id, false, null);
+        } else {
+            // walk the prototype chain and search for property
             // TODO: implement prototype search
             this.panic("Unimplemented.");
         }
