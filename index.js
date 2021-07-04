@@ -1980,11 +1980,14 @@ function VMFunction(name, arity) {
 function InlineCache() {
     this.cache = {};
     this.freed = [];
-    this.i = 0;
+    // start at 1 since 0 is used by compiler to indicate
+    // no IC
+    this.i = 1;
 }
 
 InlineCache.prototype.addShape = function (shape) {
     // TOOD: use freed if available
+    // TODO: use array for cache instead
     this.cache[this.i] = shape;
     shape.cacheIdx = this.i;
     return this.i++;
@@ -2276,7 +2279,7 @@ Compiler.prototype.callExpr = function (ast) {
         this.emitByte(Opcodes.DUPLICATE);
         // emit get opcode
         if (callee.type === AstType.STATIC_MEMBER_EXPR) {
-            this.staticMemberProperty(callee.property);
+            this.staticMemberProperty(Opcodes.GET_BY_ID, callee.property);
         } else {
             // TODO: computed member expr
         }
@@ -2404,9 +2407,16 @@ Compiler.prototype.assignmentExpr = function (ast) {
 Compiler.prototype.setLeftHandSideExpr = function (ast) {
     if (ast.type === AstType.IDENTIFIER) {
         this.getOrSetId(ast.value, false);
-    } else {
-        // TODO: member expr
+    } else if (ast.type === AstType.STATIC_MEMBER_EXPR) {
+        // compile object
+        this.expression(ast.object);
+        // add property name to constants
+        this.staticMemberProperty(Opcodes.SET_BY_ID, ast.property);
+    } else if (ast.type === AstType.COMPUTED_MEMBER_EXPR) {
+        // TODO: computed member expression
         this.panic("Unimplemented.");
+    } else {
+        this.panic("Invalid LeftHandSide expression.");
     }
 };
 
@@ -2455,14 +2465,14 @@ Compiler.prototype.staticMemberExpr = function (ast) {
     // compile lhs of `.`
     this.expression(ast.object);
     // emit property
-    this.staticMemberProperty(ast.property);
+    this.staticMemberProperty(Opcodes.GET_BY_ID, ast.property);
 };
 
-Compiler.prototype.staticMemberProperty = function (ast) {
+Compiler.prototype.staticMemberProperty = function (opcode, property) {
     // emit opcode
-    this.emitByte(Opcodes.GET_BY_ID);
+    this.emitByte(opcode);
     // emit constant index of property id
-    let index = this.addConstant(ast);
+    let index = this.addConstant(property);
     this.emitByte(index);
     // ------ Inline cache info ----------
     // TODO: handle 8 bit limit for IC
@@ -2792,6 +2802,11 @@ function dis(code, constants, name) {
                 // skip inline caching details
                 state.i += 2;
                 break;
+            case Opcodes.SET_BY_ID:
+                constInstr("SET_BY_ID", code, constants, state);
+                // skip inline caching details
+                state.i += 2;
+                break;
             case Opcodes.JUMP_IF_FALSE:
                 jumpInstr("JUMP_IF_FALSE", code, state);
                 break;
@@ -2950,7 +2965,7 @@ Vm.prototype.run = function () {
                 this.getById();
                 break;
             case Opcodes.SET_BY_ID:
-                this.panic("Unimplemented.");
+                this.setById();
                 break;
             case Opcodes.GET_BY_VALUE:
                 this.panic("Unimplemented.");
@@ -3169,36 +3184,58 @@ Vm.prototype.jump = function (condition, unconditional) {
     }
 };
 
+Vm.prototype.setById = function () {
+    // pop object on which to set property
+    let object = this.pop();
+    // pop value
+    let value = this.pop();
+    // set property value
+    this.cachedAccess(object, true, value);
+};
+
 Vm.prototype.getById = function () {
     // pop object off of the stack
     let object = this.pop();
+    // get property value
+    this.cachedAccess(object, false, null);
+};
+
+Vm.prototype.cachedAccess = function (object, setById, value) {
+    // get shape
     let shape = object.shape;
-    // pop id, shape index, and offset
+    // fetch id, shape index, and offset
     let id = this.fetchConstant();
     let cacheIdx = this.fetch();
     let cacheOffset = this.fetch();
 
     if (shape.cacheIdx === cacheIdx) {
-        // fast path
-        this.push(object.indexedValues[cacheOffset]);
+        this.getOrSetId(object.indexedValues, cacheOffset, setById, value);
     } else {
         // slow path
-        if (Object.hasOwnProperty(shape.shapeTable, id)) {
+        if (shape.shapeTable.hasOwnProperty(id)) {
             // look up value in the indexedValues array and add to IC
-            let offset = object.shape.shapeTable[id].offset;
+            let offset = shape.shapeTable[id].offset;
 
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
-            this.push(object.indexedValues[offset]);
+            this.getOrSetId(object.indexedValues, offset, setById, value);
         } else if (Object.hasOwnProperty(object.mappedValues, id)) {
-            // look up value in the mappedValues table
-            this.push(object.mappedValues[id]);
+            this.getOrSetId(object.mappedValues, id, setById, value);
         } else {
             // walk the prototype chain of object to search
             // for property
             // TODO: implement prototype search
-            this.push(this.runtime.JSUndefined);
+            this.panic("Unimplemented.");
         }
+    }
+};
+
+Vm.prototype.getOrSetId = function (data, id, setById, value) {
+    if (setById) {
+        data[id] = value;
+        this.push(value);
+    } else {
+        this.push(data[id]);
     }
 };
 
