@@ -1902,6 +1902,56 @@ JSObject.prototype.addProperty = function (key, value, writable) {
 };
 
 //------------------------------------------------------------------
+// Runtime - JSNumber
+//------------------------------------------------------------------
+
+function JSNumber(shape, proto, value) {
+    this.type = JSType.NUMBER;
+    this.proto = proto;
+    this.value = value;
+    this.shape = shape;
+    this.mappedValues = {
+        "[[__proto__]]": this.proto,
+    };
+}
+
+JSNumber.prototype.addProperty = function (key, value, writable) {
+    // can't set properties on numbers
+};
+
+//------------------------------------------------------------------
+// Runtime - JSString
+//------------------------------------------------------------------
+
+function JSString(shape, proto, value) {
+    this.type = JSType.STRING;
+    this.proto = proto;
+    this.value = value;
+    this.shape = shape;
+    this.mappedValues = {
+        "[[__proto__]]": this.proto,
+        length: value.length,
+    };
+}
+
+JSString.prototype.addProperty = function (key, value, writable) {
+    // can't set properties on strings
+};
+
+//------------------------------------------------------------------
+// Runtime - JSArray
+//------------------------------------------------------------------
+
+function JSArray(shape, proto, elements) {
+    JSObject.call(this, shape, proto);
+    this.objectType = JSObjectType.ARRAY;
+    this.elements = elements;
+}
+
+JSArray.prototype = Object.create(JSObject.prototype);
+JSArray.prototype.constructor = JSArray;
+
+//------------------------------------------------------------------
 // Runtime - JSFunction
 //------------------------------------------------------------------
 
@@ -1911,7 +1961,7 @@ function JSFunction(shape, proto, objectType, vmFunction) {
     this.vmFunction = vmFunction;
 }
 
-JSFunction.prototype = JSObject;
+JSFunction.prototype = Object.create(JSObject.prototype);
 JSFunction.prototype.constructor = JSFunction;
 
 //------------------------------------------------------------------
@@ -1932,8 +1982,24 @@ function Runtime() {
     //---------------------------------------------
     // Object prototype
     this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
+    // Number prototype
+    this.JSNumberPrototype = new JSNumber(
+        this.emptyObjectShape,
+        this.JSObjectPrototype,
+        0
+    );
     // Array prototype
+    this.JSArrayPrototype = new JSArray(
+        this.emptyObjectShape,
+        this.JSObjectPrototype,
+        []
+    );
     // String prototype
+    this.JSStringPrototype = new JSString(
+        this.emptyObjectShape,
+        this.JSObjectPrototype,
+        ""
+    );
     // Function prototype
     this.JSFunctionPrototype = new JSFunction(
         this.emptyObjectShape,
@@ -1947,6 +2013,18 @@ Runtime.prototype.newEmptyObject = function () {
     return new JSObject(this.emptyObjectShape, this.JSObjectPrototype);
 };
 
+Runtime.prototype.newNumber = function (value) {
+    return new JSNumber(this.emptyObjectShape, this.JSNumberPrototype, value);
+};
+
+Runtime.prototype.newString = function (value) {
+    let string = new JSString(
+        this.emptyObjectShape,
+        this.JSStringPrototype,
+        value
+    );
+};
+
 Runtime.prototype.newFunction = function (vmFunction) {
     return new JSFunction(
         this.emptyObjectShape,
@@ -1954,6 +2032,18 @@ Runtime.prototype.newFunction = function (vmFunction) {
         JSObjectType.FUNCTION,
         vmFunction
     );
+};
+
+Runtime.prototype.newArray = function (elements) {
+    let array = new JSArray(
+        this.emptyObjectShape,
+        this.JSArrayPrototype,
+        elements
+    );
+
+    array.addProperty("length", elements.length, true);
+
+    return array;
 };
 
 //------------------------------------------------------------------
@@ -2237,6 +2327,7 @@ Compiler.prototype.expressionStmt = function (ast) {
 Compiler.prototype.expression = function (ast) {
     switch (ast.type) {
         case AstType.STRING:
+            return this.string(ast);
         case AstType.NUMBER:
             return this.number(ast);
         case AstType.BOOLEAN:
@@ -2265,8 +2356,21 @@ Compiler.prototype.expression = function (ast) {
             return this.callExpr(ast);
         case AstType.COMPUTED_MEMBER_EXPR:
             return this.computedMemberExpr(ast);
+        case AstType.SEQUENCE_EXPR:
+            return this.sequenceExpr(ast);
         default:
             this.panic("in expression");
+    }
+};
+
+Compiler.prototype.sequenceExpr = function (ast) {
+    let expressions = ast.expressions;
+
+    for (let i = 0; i < expressions.length; i++) {
+        this.expression(expressions[i]);
+        if (i < expressions.length - 1) {
+            this.emitByte(Opcodes.POP);
+        }
     }
 };
 
@@ -2588,6 +2692,10 @@ Compiler.prototype.number = function (ast) {
     } else {
         this.emitPushConstant(value);
     }
+};
+
+Compiler.prototype.string = function (ast) {
+    this.panic("Unimplemented.");
 };
 
 //------------------------------------------------------------------
@@ -2991,6 +3099,9 @@ Vm.prototype.run = function () {
             case Opcodes.NEW_OBJECT:
                 this.newObject();
                 break;
+            case Opcodes.NEW_ARRAY:
+                this.newArray();
+                break;
             case Opcodes.GET_BY_ID:
                 this.getById();
                 break;
@@ -3201,8 +3312,7 @@ Vm.prototype.setLocal = function () {
 };
 
 Vm.prototype.pushInt = function () {
-    // Use JSNumber
-    this.push(this.fetch());
+    this.push(this.runtime.newNumber(this.fetch()));
 };
 
 Vm.prototype.loop = function () {
@@ -3239,6 +3349,28 @@ Vm.prototype.setByValue = function () {
     let object = this.pop();
     // pop value
     let value = this.pop();
+
+    if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
+        return this.setArrayElem(object, id, value);
+    } else {
+        return this.setObjectProp(object, id, value);
+    }
+};
+
+Vm.prototype.setArrayElem = function (object, id, value) {
+    let idx = id.value;
+    // array length is always offset 0 (invariant)
+    let length = object.indexedValues[0];
+
+    if (idx < length) {
+        object.elements[idx] = value;
+        this.push(value);
+    } else {
+        return setObjectProp(object, id, value);
+    }
+};
+
+Vm.prototype.setObjectProp = function (object, id, value) {
     // get shape
     let shape = object.shape;
 
@@ -3261,6 +3393,26 @@ Vm.prototype.getByValue = function () {
     let id = this.pop();
     // pop object
     let object = this.pop();
+    if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
+        return this.getArrayElem(object, id);
+    } else {
+        return this.getObjectProp(object, id);
+    }
+};
+
+Vm.prototype.getArrayElem = function (object, id) {
+    let idx = id.value;
+    // array length is always offset 0 (invariant)
+    let length = object.indexedValues[0];
+
+    if (idx < length) {
+        this.push(object.elements[idx]);
+    } else {
+        return this.getObjectProp(object, id);
+    }
+};
+
+Vm.prototype.getObjectProp = function (object, id) {
     // get shape
     let shape = object.shape;
 
@@ -3302,12 +3454,10 @@ Vm.prototype.cachedSet = function (object, value) {
     let cacheOffset = this.fetch();
 
     if (shape.cacheIdx === cacheIdx) {
-        console.log("USING IC FOR SET_BY_ID");
         this.getOrSetId(object.indexedValues, cacheOffset, true, value);
     } else {
         // slow path
         if (shape.shapeTable.hasOwnProperty(id)) {
-            console.log("SETTING IC FOR SET_BY_ID");
             // look up value in the indexedValues array and add to IC
             let offset = shape.shapeTable[id].offset;
 
@@ -3367,6 +3517,17 @@ Vm.prototype.getOrSetId = function (data, id, setById, value) {
 Vm.prototype.modifyCodeForIC = function (cacheIdx, cacheOffset) {
     this.currentFun.code[this.currentFrame.ip - 1] = cacheOffset;
     this.currentFun.code[this.currentFrame.ip - 2] = cacheIdx;
+};
+
+Vm.prototype.newArray = function () {
+    let numElements = this.fetchConstant();
+    let elements = [];
+
+    for (let i = 0; i < numElements; i++) {
+        elements.push(this.pop());
+    }
+
+    this.push(this.runtime.newArray(elements));
 };
 
 Vm.prototype.newObject = function () {
