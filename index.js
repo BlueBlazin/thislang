@@ -8,16 +8,17 @@
 let DEBUG_VM = true;
 let DEBUG_PARSER = false;
 
-let FRAMES_MAX = 64;
-let STACK_MAX = FRAMES_MAX * 256;
-let MAX_NUM_CONSTANTS = 256;
+let UINT8_MAX = 256 | 0;
+let FRAMES_MAX = 64 | 0;
+let STACK_MAX = FRAMES_MAX * UINT8_MAX;
+let MAX_NUM_CONSTANTS = UINT8_MAX;
 
 //==================================================================
 // Helpers
 //==================================================================
 
 /** Returns an array of specified size filled with specified value */
-let initArray = function (size, fillValue) {
+function initArray(size, fillValue) {
     let arr = [];
 
     for (let i = 0; i < size; i++) {
@@ -25,13 +26,13 @@ let initArray = function (size, fillValue) {
     }
 
     return arr;
-};
+}
 
-let dbg = function (flag, args) {
+function dbg(flag, args) {
     if (flag) {
         console.log(...args);
     }
-};
+}
 
 //==================================================================
 // Tokenizer
@@ -1801,12 +1802,11 @@ let Opcodes = {
 // prettier-ignore
 let JSType = {
     NUMBER:     0x00,
-    BOOL:       0x01,
+    BOOLEAN:       0x01,
     NULL:       0x02,
     UNDEFINED:  0x03,
-    BOOL:       0x04,
+    STRING:     0x04,
     OBJECT:     0x05,
-    STRING:     0x06,
 };
 
 // prettier-ignore
@@ -1815,6 +1815,46 @@ let JSObjectType = {
     ARRAY:     0x01,
     FUNCTION:  0x02,
     NATIVE:    0x03,
+}
+
+function toString(value) {
+    switch (value.type) {
+        case JSType.NUMBER:
+            return String(value.value);
+        case JSType.BOOLEAN:
+            return value.value ? "true" : "false";
+        case JSType.NULL:
+            return "null";
+        case JSType.UNDEFINED:
+            return "undefined";
+        case JSType.STRING:
+            return value.value;
+        case JSType.OBJECT:
+            return objectToString(value);
+        default:
+            return value + "";
+    }
+}
+
+function objectToString(value) {
+    switch (value.objectType) {
+        case JSObjectType.ORDINARY:
+            return "[object Object]";
+        case JSObjectType.ARRAY:
+            let elements = [];
+            let numElements = value.elements.length;
+            for (let i = 0; i < 100; i++) {
+                if (i === numElements) {
+                    return "[" + elements.join(", ") + "]";
+                }
+                elements.push(toString(value.elements[i]));
+            }
+            return "[" + elements.join(", ") + ", ...]";
+        case JSObjectType.FUNCTION:
+            return "[" + value.vmFunction.name + ": Function]";
+        case JSObjectType.NATIVE:
+            return "[" + value.vmFunction.name + ": native code]";
+    }
 }
 
 //------------------------------------------------------------------
@@ -1892,13 +1932,31 @@ function JSObject(shape, proto) {
 
     // property values
     this.mappedValues = {
-        "[[__proto__]]": this.proto,
+        "[[__proto__]]": proto,
     };
 }
 
 JSObject.prototype.addProperty = function (key, value, writable) {
     this.shape = this.shape.transition(key);
     this.indexedValues.push(value);
+};
+
+//------------------------------------------------------------------
+// Runtime - JSBoolean
+//------------------------------------------------------------------
+
+function JSBoolean(shape, proto, value) {
+    this.type = JSType.BOOLEAN;
+    this.proto = proto;
+    this.value = value;
+    this.shape = shape;
+    this.mappedValues = {
+        "[[__proto__]]": proto,
+    };
+}
+
+JSBoolean.prototype.addProperty = function (key, value, writable) {
+    // can't set properties on booleans
 };
 
 //------------------------------------------------------------------
@@ -1911,7 +1969,7 @@ function JSNumber(shape, proto, value) {
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
-        "[[__proto__]]": this.proto,
+        "[[__proto__]]": proto,
     };
 }
 
@@ -1929,7 +1987,7 @@ function JSString(shape, proto, value) {
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
-        "[[__proto__]]": this.proto,
+        "[[__proto__]]": proto,
         length: value.length,
     };
 }
@@ -1972,8 +2030,6 @@ function Runtime() {
     // primitive constants
     this.JSNull = { type: JSType.NULL };
     this.JSUndefined = { type: JSType.UNDEFINED };
-    this.JSTrue = { type: JSType.BOOL };
-    this.JSFalse = { type: JSType.BOOL };
 
     this.emptyObjectShape = new Shape("", null, null);
 
@@ -1982,24 +2038,47 @@ function Runtime() {
     //---------------------------------------------
     // Object prototype
     this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
+
+    // Boolean
+    this.JSBooleanPrototype = new JSBoolean(
+        this.emptyObjectShape,
+        this.JSObjectPrototype,
+        false
+    );
+
+    this.JSTrue = new JSBoolean(
+        this.emptyObjectShape,
+        this.JSBooleanPrototype,
+        true
+    );
+
+    this.JSFalse = new JSBoolean(
+        this.emptyObjectShape,
+        this.JSBooleanPrototype,
+        false
+    );
+
     // Number prototype
     this.JSNumberPrototype = new JSNumber(
         this.emptyObjectShape,
         this.JSObjectPrototype,
         0
     );
+
     // Array prototype
     this.JSArrayPrototype = new JSArray(
         this.emptyObjectShape,
         this.JSObjectPrototype,
         []
     );
+
     // String prototype
     this.JSStringPrototype = new JSString(
         this.emptyObjectShape,
         this.JSObjectPrototype,
         ""
     );
+
     // Function prototype
     this.JSFunctionPrototype = new JSFunction(
         this.emptyObjectShape,
@@ -2018,11 +2097,7 @@ Runtime.prototype.newNumber = function (value) {
 };
 
 Runtime.prototype.newString = function (value) {
-    let string = new JSString(
-        this.emptyObjectShape,
-        this.JSStringPrototype,
-        value
-    );
+    return new JSString(this.emptyObjectShape, this.JSStringPrototype, value);
 };
 
 Runtime.prototype.newFunction = function (vmFunction) {
@@ -2096,7 +2171,12 @@ function Compiler(runtime) {
     this.runtime = runtime;
     this.function = new VMFunction(null, 0);
     this.scopeDepth = 0;
-    this.locals = [{ name: "this", depth: 0, isCaptured: false, ready: true }];
+    // the first entry has no name since `arguments` is not defined
+    // at the top level
+    this.locals = [
+        { name: "", depth: 0, isCaptured: false, ready: true },
+        { name: "this", depth: 0, isCaptured: false, ready: true },
+    ];
     this.localsStack = [];
     this.anonCount = 0;
 }
@@ -2143,7 +2223,10 @@ Compiler.prototype.statement = function (ast) {
             this.endScope();
             return;
         case AstType.WHILE_STMT:
-            return this.whileStmt(ast);
+            this.beginScope();
+            this.whileStmt(ast);
+            this.endScope();
+            return;
         default:
             this.panic(ast.type);
     }
@@ -2388,6 +2471,9 @@ Compiler.prototype.callExpr = function (ast) {
     if (callee.type === AstType.IDENTIFIER) {
         // compile callee
         this.expression(callee);
+        // duplication is needed to account for an extra stack
+        // slot where the `arguments` array will be stored
+        this.emitByte(Opcodes.DUPLICATE);
     } else {
         // compile object
         this.expression(callee.object);
@@ -2397,12 +2483,19 @@ Compiler.prototype.callExpr = function (ast) {
         if (callee.type === AstType.STATIC_MEMBER_EXPR) {
             this.staticMemberProperty(Opcodes.GET_BY_ID, callee.property);
         } else {
-            // TODO: computed member expr
+            // compile property value
+            this.expression(callee.property);
+            // emit opcode
+            this.emitByte(Opcodes.GET_BY_VALUE);
         }
     }
 
     let numArgs = ast.arguments.length;
-    // TODO: limit number of arguments
+
+    if (numArgs > UINT8_MAX) {
+        this.panic("Too many arguments to function");
+    }
+
     for (let i = 0; i < numArgs; i++) {
         this.expression(ast.arguments[i]);
     }
@@ -2547,7 +2640,7 @@ Compiler.prototype.identifier = function (ast) {
 Compiler.prototype.getOrSetId = function (name, getOp) {
     let idx;
 
-    if ((idx = this.resolveLocal(name))) {
+    if ((idx = this.resolveLocal(name)) !== null) {
         // statically resolved local variable
         if (getOp) {
             this.emitBytes([Opcodes.GET_LOCAL, idx]);
@@ -2579,6 +2672,8 @@ Compiler.prototype.resolveLocal = function (name) {
             return idx;
         }
     }
+
+    return null;
 };
 
 Compiler.prototype.staticMemberExpr = function (ast) {
@@ -2695,7 +2790,7 @@ Compiler.prototype.number = function (ast) {
 };
 
 Compiler.prototype.string = function (ast) {
-    this.panic("Unimplemented.");
+    this.emitPushConstant(this.runtime.newString(ast.value));
 };
 
 //------------------------------------------------------------------
@@ -2709,7 +2804,10 @@ Compiler.prototype.withFunctionCtx = function (name, arity, compileFn) {
 
     this.scopeDepth = 0;
     this.function = new VMFunction(name, arity, fun.env);
-    this.locals = [{ name: "this", depth: 0, isCaptured: false, ready: true }];
+    this.locals = [
+        { name: "arguments", depth: 0, isCaptured: false, ready: true },
+        { name: "this", depth: 0, isCaptured: false, ready: true },
+    ];
 
     compileFn();
 
@@ -2813,14 +2911,6 @@ Compiler.prototype.emitBytes = function (bytes) {
 // Disassembler
 //==================================================================
 
-function display(value) {
-    if (value.objectType === JSObjectType.FUNCTION) {
-        return "[function]";
-    } else {
-        return value;
-    }
-}
-
 function simpleInstr(name, state) {
     state.disassembly.push(
         String(state.i).padStart(5, "0") + ":    " + name.padEnd(14, " ")
@@ -2835,7 +2925,7 @@ function constInstr(name, code, constants, state) {
             ":    " +
             name.padEnd(14, " ") +
             " " +
-            display(constants[idx])
+            toString(constants[idx])
     );
     state.i += 2;
 }
@@ -3057,7 +3147,9 @@ function Vm(fun, runtime) {
     // current frame
     this.currentFrame = this.frames[0];
 
-    // push `this` on stack slot 0
+    // push `arguments` on stack slot 0
+    this.push(runtime.JSUndefined);
+    // push `this` on stack slot 1
     this.push(runtime.newEmptyObject());
 }
 
@@ -3067,7 +3159,7 @@ Vm.prototype.run = function () {
     while (this.currentFrame.ip < this.currentFun.code.length) {
         switch (this.fetch()) {
             case Opcodes.POP:
-                console.log("Popping: ", this.pop());
+                console.log("Popping: ", toString(this.pop()));
                 break;
             case Opcodes.PUSH_CONSTANT:
                 this.pushConstant();
@@ -3202,7 +3294,7 @@ Vm.prototype.getFromEnv = function () {
     if (value !== null) {
         this.push(value);
     } else {
-        this.push(this.runtime.JSUndefined);
+        this.panic(id + " is not defined");
     }
 };
 
@@ -3210,15 +3302,22 @@ Vm.prototype.callMethod = function () {
     let numArgs = this.fetch();
 
     let idx = this.sp - 1 - numArgs;
+    // get callee (JSFunction)
     let callee = this.stack[idx];
+    // inner function
+    let fun = callee.vmFunction;
+    // get object from which method was called
     let object = this.stack[idx - 1];
+
+    this.setArgumentsArray(fun, idx, numArgs);
 
     if (callee.objectType === JSObjectType.FUNCTION) {
         // set `this` to object
         this.stack[idx] = object;
-        this.initFunctionCall(callee.vmFunction, numArgs);
+        this.initFunctionCall(fun, idx - 1);
     } else if (callee.objectType === JSObjectType.NATIVE) {
         // TODO
+        this.panic("Unimplemented.");
     } else {
         this.panic("Value not callable.");
     }
@@ -3227,25 +3326,37 @@ Vm.prototype.callMethod = function () {
 Vm.prototype.callFunction = function () {
     let numArgs = this.fetch();
 
-    let callee = this.stack[this.sp - 1 - numArgs];
+    let idx = this.sp - 1 - numArgs;
+    // get callee (JSFunction)
+    let callee = this.stack[idx];
+    // inner function
+    let fun = callee.vmFunction;
+    // create and set the `arguments` array
+    this.setArgumentsArray(fun, idx, numArgs);
 
     if (callee.objectType === JSObjectType.FUNCTION) {
         // set `this` to undefined
-        this.stack[this.sp - 1 - numArgs] = this.runtime.JSUndefined;
-        this.initFunctionCall(callee.vmFunction, numArgs);
+        this.stack[idx] = this.runtime.JSUndefined;
+        this.initFunctionCall(fun, idx - 1);
     } else if (callee.objectType === JSObjectType.NATIVE) {
         // TODO
+        this.panic("Unimplemented.");
     } else {
         this.panic("Value not callable.");
     }
 };
 
-Vm.prototype.initFunctionCall = function (fun, numArgs) {
-    let frame = new CallFrame(
-        fun,
-        this.sp - 1 - numArgs,
-        this.currentFrame.env
-    );
+Vm.prototype.setArgumentsArray = function (fun, idx, numArgs) {
+    // create an arguments array
+    let argumentsArray = this.stack.slice(this.sp - numArgs, this.sp);
+    // pop off extra values
+    this.sp = this.sp - numArgs + fun.arity;
+    // set argumentsArray as value at its reserved stack idx
+    this.stack[idx - 1] = this.runtime.newArray(argumentsArray);
+};
+
+Vm.prototype.initFunctionCall = function (fun, newFp) {
+    let frame = new CallFrame(fun, newFp, this.currentFrame.env);
 
     this.frames.push(frame);
     this.currentFun = fun;
@@ -3256,9 +3367,14 @@ Vm.prototype.return = function () {
     let returnValue = this.pop();
 
     let poppedFrame = this.frames.pop();
+
+    // update currentFrame and currentFun
+    let frame = this.frames[this.frames.length - 1];
+    this.currentFrame = frame;
+    this.currentFun = frame.fun;
+
     // TODO: close upvars
     this.sp = poppedFrame.fp;
-
     this.push(returnValue);
 };
 
@@ -3352,7 +3468,7 @@ Vm.prototype.setByValue = function () {
 
     if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
         return this.setArrayElem(object, id, value);
-    } else {
+    } else if (object.objectType !== undefined) {
         return this.setObjectProp(object, id, value);
     }
 };
@@ -3395,8 +3511,23 @@ Vm.prototype.getByValue = function () {
     let object = this.pop();
     if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
         return this.getArrayElem(object, id);
+    } else if (object.type === JSType.STRING && id.type === JSType.NUMBER) {
+        return this.getStringChar(object, id);
     } else {
         return this.getObjectProp(object, id);
+    }
+};
+
+Vm.prototype.getStringChar = function (object, id) {
+    let idx = id.value;
+    // strings always have a length property on
+    // mappedValues (invariant)
+    let length = object.mappedValues.length;
+
+    if (idx < length) {
+        this.push(object.value[idx]);
+    } else {
+        this.push(this.runtime.JSUndefined);
     }
 };
 
@@ -3432,10 +3563,13 @@ Vm.prototype.getObjectProp = function (object, id) {
 Vm.prototype.setById = function () {
     // pop object on which to set property
     let object = this.pop();
-    // pop value
-    let value = this.pop();
-    // set property value
-    this.cachedSet(object, value);
+
+    if (object.objectType !== undefined) {
+        // pop value
+        let value = this.pop();
+        // set property value
+        this.cachedSet(object, value);
+    }
 };
 
 Vm.prototype.getById = function () {
@@ -3574,7 +3708,9 @@ Vm.prototype.div = function () {
 };
 
 Vm.prototype.pushThis = function () {
-    let value = this.stack[this.currentFrame.fp];
+    // `this` is always set at fp + 1 in
+    // `callFunction` and `callMethod` (invariant)
+    let value = this.stack[this.currentFrame.fp + 1];
     this.push(value);
 };
 
