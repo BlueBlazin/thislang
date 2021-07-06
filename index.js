@@ -1793,6 +1793,7 @@ let Opcodes = {
     RETURN:            0x24,
     CALL_FUNCTION:     0x25,
     CALL_METHOD:       0x26,
+    CALL_CONSTRUCTOR:  0x27,
 };
 
 //==================================================================
@@ -1832,6 +1833,7 @@ function toString(value) {
         case JSType.OBJECT:
             return objectToString(value);
         default:
+            // throw Error("Unknown type: " + value);
             return value + "";
     }
 }
@@ -1853,7 +1855,9 @@ function objectToString(value) {
         case JSObjectType.FUNCTION:
             return "[" + value.vmFunction.name + ": Function]";
         case JSObjectType.NATIVE:
-            return "[" + value.vmFunction.name + ": native code]";
+            return "[native code]";
+        default:
+            throw Error("Unknown type " + value);
     }
 }
 
@@ -1893,12 +1897,18 @@ function Shape(key, offset, parent) {
     this.transitions = {};
     this.shapeTable = {};
     this.cacheIdx = null;
+    this.constructorFlag = true;
 }
 
 Shape.prototype.transition = function (key) {
-    if (this.transitions[key] !== undefined) {
+    if (
+        this.transitions[key] !== undefined &&
+        !(key === "constructor" && this.constructorFlag)
+    ) {
         return this.transitions[key];
     }
+
+    if (key === "constructor") this.constructorFlag = false;
 
     let shape = new Shape(
         key,
@@ -2017,6 +2027,7 @@ function JSFunction(shape, proto, objectType, vmFunction) {
     JSObject.call(this, shape, proto);
     this.objectType = objectType;
     this.vmFunction = vmFunction;
+    // this.vmOrNativeFunction = this.vmOrNativeFunction;
 }
 
 JSFunction.prototype = Object.create(JSObject.prototype);
@@ -2101,12 +2112,18 @@ Runtime.prototype.newString = function (value) {
 };
 
 Runtime.prototype.newFunction = function (vmFunction) {
-    return new JSFunction(
+    let fun = new JSFunction(
         this.emptyObjectShape,
         this.JSFunctionPrototype,
         JSObjectType.FUNCTION,
         vmFunction
     );
+
+    let prototypeProperty = this.newEmptyObject();
+    prototypeProperty.addProperty("constructor", fun);
+    fun.addProperty("prototype", prototypeProperty);
+
+    return fun;
 };
 
 Runtime.prototype.newArray = function (elements) {
@@ -2120,6 +2137,60 @@ Runtime.prototype.newArray = function (elements) {
 
     return array;
 };
+
+Runtime.prototype.newNativeFunction = function (name, arity, nativeFunction) {
+    return new JSFunction(
+        this.emptyObjectShape,
+        this.JSFunctionPrototype,
+        JSObjectType.NATIVE,
+        new NativeFunction(name, arity, nativeFunction)
+    );
+};
+
+Runtime.prototype.generateGlobalEnv = function () {
+    let env = new Env(null);
+
+    //--------------------------------------------------
+    // console
+    //--------------------------------------------------
+    let consoleObj = this.newEmptyObject();
+
+    // TODO: pass `this`
+    consoleObj.addProperty(
+        "log",
+        this.newNativeFunction("log", 0, function (vm, args) {
+            console.log(...args.map(toString));
+            vm.push(vm.runtime.JSUndefined);
+        })
+    );
+
+    env.add("console", consoleObj);
+
+    return env;
+};
+
+Runtime.prototype.cloneObject = function (object) {
+    let clonedObject = this.newEmptyObject();
+    clonedObject.indexedValues = Array.from(object.indexedValues);
+    clonedObject.shape = object.shape;
+    clonedObject.proto = object.proto;
+    clonedObject.mappedValues = Object.assign({}, object.mappedValues);
+
+    return clonedObject;
+};
+
+//------------------------------------------------------------------
+// Runtime - NativeFunction
+//------------------------------------------------------------------
+
+function NativeFunction(name, arity, callFn) {
+    // function name
+    this.name = name;
+    // number of parameters
+    this.arity = arity;
+    // function
+    this.callFn = callFn;
+}
 
 //------------------------------------------------------------------
 // Runtime - VMFunction
@@ -2441,9 +2512,33 @@ Compiler.prototype.expression = function (ast) {
             return this.computedMemberExpr(ast);
         case AstType.SEQUENCE_EXPR:
             return this.sequenceExpr(ast);
+        case AstType.NEW_EXPR:
+            return this.newExpr(ast);
         default:
             this.panic("in expression");
     }
+};
+
+Compiler.prototype.newExpr = function (ast) {
+    let callee = ast.callee;
+    // compile callee
+    this.expression(callee);
+    // duplication is needed to account for stack slots
+    // for storing `arguments` and `this`
+    this.emitByte(Opcodes.DUPLICATE);
+
+    let numArgs = ast.arguments.length;
+
+    if (numArgs > UINT8_MAX) {
+        this.panic("Too many arguments to function");
+    }
+
+    // compile arguments
+    for (let i = 0; i < numArgs; i++) {
+        this.expression(ast.arguments[i]);
+    }
+
+    this.emitBytes([Opcodes.CALL_CONSTRUCTOR, numArgs]);
 };
 
 Compiler.prototype.sequenceExpr = function (ast) {
@@ -2668,7 +2763,6 @@ Compiler.prototype.resolveLocal = function (name) {
             if (!local.ready) {
                 this.panic("Cannot access " + name + " before initialization.");
             }
-
             return idx;
         }
     }
@@ -3101,6 +3195,9 @@ function dis(code, constants, name) {
             case Opcodes.CALL_METHOD:
                 literalInstr("CALL_METHOD", code, state);
                 break;
+            case Opcodes.CALL_CONSTRUCTOR:
+                literalInstr("CALL_CONSTRUCTOR", code, state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3120,7 +3217,7 @@ function dis(code, constants, name) {
 // VM
 //==================================================================
 
-function CallFrame(fun, fp, outerEnv) {
+function CallFrame(fun, fp, outerEnv, isConstructor) {
     // function
     this.fun = fun;
     // instruction pointer
@@ -3129,6 +3226,8 @@ function CallFrame(fun, fp, outerEnv) {
     this.fp = fp;
     // environment
     this.env = new Env(outerEnv);
+    // new call
+    this.isConstructor = isConstructor;
 }
 
 function Vm(fun, runtime) {
@@ -3141,7 +3240,9 @@ function Vm(fun, runtime) {
     // IC
     this.inlineCache = new InlineCache();
     // call frames
-    this.frames = [new CallFrame(fun, 0, null)];
+    let baseFrame = new CallFrame(fun, 0, null, false);
+    baseFrame.env = runtime.generateGlobalEnv();
+    this.frames = [baseFrame];
     // current function
     this.currentFun = fun;
     // current frame
@@ -3272,6 +3373,9 @@ Vm.prototype.run = function () {
             case Opcodes.CALL_METHOD:
                 this.callMethod();
                 break;
+            case Opcodes.CALL_CONSTRUCTOR:
+                this.callConstructor();
+                break;
         }
     }
 };
@@ -3279,6 +3383,42 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.callConstructor = function () {
+    let numArgs = this.fetch();
+
+    let idx = this.sp - 1 - numArgs;
+    // get callee (JSFunction)
+    let callee = this.stack[idx];
+    // inner function
+    let fun = callee.vmFunction;
+
+    let argumentsArray = this.setArgumentsArray(fun, idx, numArgs);
+
+    if (callee.objectType === JSObjectType.FUNCTION) {
+        // let shapeTable = callee.shape.shapeTable;
+        // // clone prototype object
+        // let prototypeObject = this.runtime.cloneObject(
+        //     callee.indexedValues[shapeTable["prototype"].offset]
+        // );
+
+        let shapeTable = callee.shape.shapeTable;
+
+        let prototypeObject = this.runtime.newEmptyObject();
+
+        prototypeObject.mappedValues["[[__proto__]]"] =
+            callee.indexedValues[shapeTable["prototype"].offset];
+
+        // set `this` to the prototype object
+        this.stack[idx] = prototypeObject;
+        // run constructor
+        this.initFunctionCall(fun, idx - 1, true);
+    } else if (callee.objectType === JSObjectType.NATIVE) {
+        callee.vmFunction.callFn(this, argumentsArray);
+    } else {
+        this.panic("Value not a constructor.");
+    }
+};
 
 Vm.prototype.setFromEnv = function () {
     let id = this.fetchConstant();
@@ -3309,15 +3449,14 @@ Vm.prototype.callMethod = function () {
     // get object from which method was called
     let object = this.stack[idx - 1];
 
-    this.setArgumentsArray(fun, idx, numArgs);
+    let argumentsArray = this.setArgumentsArray(fun, idx, numArgs);
 
     if (callee.objectType === JSObjectType.FUNCTION) {
         // set `this` to object
         this.stack[idx] = object;
-        this.initFunctionCall(fun, idx - 1);
+        this.initFunctionCall(fun, idx - 1, false);
     } else if (callee.objectType === JSObjectType.NATIVE) {
-        // TODO
-        this.panic("Unimplemented.");
+        callee.vmFunction.callFn(this, argumentsArray);
     } else {
         this.panic("Value not callable.");
     }
@@ -3332,15 +3471,14 @@ Vm.prototype.callFunction = function () {
     // inner function
     let fun = callee.vmFunction;
     // create and set the `arguments` array
-    this.setArgumentsArray(fun, idx, numArgs);
+    let argumentsArray = this.setArgumentsArray(fun, idx, numArgs);
 
     if (callee.objectType === JSObjectType.FUNCTION) {
         // set `this` to undefined
         this.stack[idx] = this.runtime.JSUndefined;
-        this.initFunctionCall(fun, idx - 1);
+        this.initFunctionCall(fun, idx - 1, false);
     } else if (callee.objectType === JSObjectType.NATIVE) {
-        // TODO
-        this.panic("Unimplemented.");
+        callee.vmFunction.callFn(this, argumentsArray);
     } else {
         this.panic("Value not callable.");
     }
@@ -3353,10 +3491,12 @@ Vm.prototype.setArgumentsArray = function (fun, idx, numArgs) {
     this.sp = this.sp - numArgs + fun.arity;
     // set argumentsArray as value at its reserved stack idx
     this.stack[idx - 1] = this.runtime.newArray(argumentsArray);
+
+    return argumentsArray;
 };
 
-Vm.prototype.initFunctionCall = function (fun, newFp) {
-    let frame = new CallFrame(fun, newFp, this.currentFrame.env);
+Vm.prototype.initFunctionCall = function (fun, newFp, isConstructor) {
+    let frame = new CallFrame(fun, newFp, this.currentFrame.env, isConstructor);
 
     this.frames.push(frame);
     this.currentFun = fun;
@@ -3367,6 +3507,11 @@ Vm.prototype.return = function () {
     let returnValue = this.pop();
 
     let poppedFrame = this.frames.pop();
+
+    if (poppedFrame.isConstructor) {
+        // replace returnValue with the special `this` supplied to constructors
+        returnValue = this.stack[poppedFrame.fp + 1];
+    }
 
     // update currentFrame and currentFun
     let frame = this.frames[this.frames.length - 1];
@@ -3514,7 +3659,7 @@ Vm.prototype.getByValue = function () {
     } else if (object.type === JSType.STRING && id.type === JSType.NUMBER) {
         return this.getStringChar(object, id);
     } else {
-        return this.getObjectProp(object, id);
+        return this.getObjectProp(object, id.value);
     }
 };
 
@@ -3539,7 +3684,7 @@ Vm.prototype.getArrayElem = function (object, id) {
     if (idx < length) {
         this.push(object.elements[idx]);
     } else {
-        return this.getObjectProp(object, id);
+        return this.getObjectProp(object, idx);
     }
 };
 
