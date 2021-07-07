@@ -1987,6 +1987,46 @@ JSNumber.prototype.addProperty = function (key, value, writable) {
     // can't set properties on numbers
 };
 
+JSNumber.prototype.add = function (right, runtime) {
+    return runtime.newNumber(this.value + right.value);
+};
+
+JSNumber.prototype.sub = function (right, runtime) {
+    return runtime.newNumber(this.value - right.value);
+};
+
+JSNumber.prototype.mul = function (right, runtime) {
+    return runtime.newNumber(this.value * right.value);
+};
+
+JSNumber.prototype.div = function (right, runtime) {
+    return runtime.newNumber(this.value / right.value);
+};
+
+JSNumber.prototype.equal = function (right, runtime) {
+    return this.value === right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSNumber.prototype.lt = function (right, runtime) {
+    return this.value < right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSNumber.prototype.leq = function (right, runtime) {
+    return this.value <= right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSNumber.prototype.gt = function (right, runtime) {
+    return this.value > right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSNumber.prototype.geq = function (right, runtime) {
+    return this.value >= right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSNumber.prototype.neq = function (right, runtime) {
+    return this.value !== right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
 //------------------------------------------------------------------
 // Runtime - JSString
 //------------------------------------------------------------------
@@ -2004,6 +2044,36 @@ function JSString(shape, proto, value) {
 
 JSString.prototype.addProperty = function (key, value, writable) {
     // can't set properties on strings
+};
+
+JSString.prototype.add = function (right, runtime) {
+    return runtime.newString(this.value + right.value);
+};
+
+JSString.prototype.equal = function (right, runtime) {
+    return this.type === right.type && this.value === right.value
+        ? runtime.JSTrue
+        : runtime.JSFalse;
+};
+
+JSString.prototype.lt = function (right, runtime) {
+    return this.value < right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSString.prototype.leq = function (right, runtime) {
+    return this.value <= right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSString.prototype.gt = function (right, runtime) {
+    return this.value > right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSString.prototype.geq = function (right, runtime) {
+    return this.value >= right.value ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSString.prototype.neq = function (right, runtime) {
+    return this.value !== right.value ? runtime.JSTrue : runtime.JSFalse;
 };
 
 //------------------------------------------------------------------
@@ -2138,12 +2208,12 @@ Runtime.prototype.newArray = function (elements) {
     return array;
 };
 
-Runtime.prototype.newNativeFunction = function (name, arity, nativeFunction) {
+Runtime.prototype.newNativeFunction = function (name, nativeFunction) {
     return new JSFunction(
         this.emptyObjectShape,
         this.JSFunctionPrototype,
         JSObjectType.NATIVE,
-        new NativeFunction(name, arity, nativeFunction)
+        new NativeFunction(name, nativeFunction)
     );
 };
 
@@ -2153,18 +2223,40 @@ Runtime.prototype.generateGlobalEnv = function () {
     //--------------------------------------------------
     // console
     //--------------------------------------------------
-    let consoleObj = this.newEmptyObject();
+    let TLConsole = this.newEmptyObject();
 
     // TODO: pass `this`
-    consoleObj.addProperty(
+    TLConsole.addProperty(
         "log",
-        this.newNativeFunction("log", 0, function (vm, args) {
+        this.newNativeFunction("log", function (vm, args) {
             console.log(...args.map(toString));
-            vm.push(vm.runtime.JSUndefined);
+            return vm.runtime.JSUndefined;
         })
     );
 
-    env.add("console", consoleObj);
+    env.add("console", TLConsole);
+
+    //--------------------------------------------------
+    // Object
+    //--------------------------------------------------
+    let TLObject = this.newNativeFunction("Object", function (vm, args) {
+        if (args.length === 0) {
+            return vm.runtime.newEmptyObject();
+        } else {
+            return args[0];
+        }
+    });
+
+    env.add("Object", TLObject);
+    //--------------------------------------------------
+    // Boolean
+    //--------------------------------------------------
+    //--------------------------------------------------
+    // Array
+    //--------------------------------------------------
+    //--------------------------------------------------
+    // String
+    //--------------------------------------------------
 
     return env;
 };
@@ -2183,11 +2275,11 @@ Runtime.prototype.cloneObject = function (object) {
 // Runtime - NativeFunction
 //------------------------------------------------------------------
 
-function NativeFunction(name, arity, callFn) {
+function NativeFunction(name, callFn) {
     // function name
     this.name = name;
     // number of parameters
-    this.arity = arity;
+    this.arity = 0;
     // function
     this.callFn = callFn;
 }
@@ -2267,6 +2359,7 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.BLOCK_STMT:
         case AstType.SWITCH_STMT:
         case AstType.WHILE_STMT:
+        case AstType.RETURN_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -2298,9 +2391,21 @@ Compiler.prototype.statement = function (ast) {
             this.whileStmt(ast);
             this.endScope();
             return;
+        case AstType.RETURN_STMT:
+            return this.returnStmt(ast);
         default:
             this.panic(ast.type);
     }
+};
+
+Compiler.prototype.returnStmt = function (ast) {
+    if (ast.argument === null) {
+        this.emitByte(Opcodes.PUSH_UNDEFINED);
+    } else {
+        this.expression(ast.argument);
+    }
+
+    this.emitByte(Opcodes.RETURN);
 };
 
 Compiler.prototype.functionDclr = function (ast) {
@@ -3260,7 +3365,8 @@ Vm.prototype.run = function () {
     while (this.currentFrame.ip < this.currentFun.code.length) {
         switch (this.fetch()) {
             case Opcodes.POP:
-                console.log("Popping: ", toString(this.pop()));
+                let value = this.pop();
+                // console.log("Popping: ", toString(value));
                 break;
             case Opcodes.PUSH_CONSTANT:
                 this.pushConstant();
@@ -3396,12 +3502,6 @@ Vm.prototype.callConstructor = function () {
     let argumentsArray = this.setArgumentsArray(fun, idx, numArgs);
 
     if (callee.objectType === JSObjectType.FUNCTION) {
-        // let shapeTable = callee.shape.shapeTable;
-        // // clone prototype object
-        // let prototypeObject = this.runtime.cloneObject(
-        //     callee.indexedValues[shapeTable["prototype"].offset]
-        // );
-
         let shapeTable = callee.shape.shapeTable;
 
         let prototypeObject = this.runtime.newEmptyObject();
@@ -3414,7 +3514,12 @@ Vm.prototype.callConstructor = function () {
         // run constructor
         this.initFunctionCall(fun, idx - 1, true);
     } else if (callee.objectType === JSObjectType.NATIVE) {
-        callee.vmFunction.callFn(this, argumentsArray);
+        let result = callee.vmFunction.callFn(this, argumentsArray);
+        // manually handle return
+        // first set the sp to what would've been the new fp
+        this.sp = idx - 1;
+        // push the return value on top of stack
+        this.push(result);
     } else {
         this.panic("Value not a constructor.");
     }
@@ -3456,7 +3561,12 @@ Vm.prototype.callMethod = function () {
         this.stack[idx] = object;
         this.initFunctionCall(fun, idx - 1, false);
     } else if (callee.objectType === JSObjectType.NATIVE) {
-        callee.vmFunction.callFn(this, argumentsArray);
+        let result = callee.vmFunction.callFn(this, argumentsArray);
+        // manually handle return
+        // first set the sp to what would've been the new fp
+        this.sp = idx - 1;
+        // push the return value on top of stack
+        this.push(result);
     } else {
         this.panic("Value not callable.");
     }
@@ -3478,7 +3588,12 @@ Vm.prototype.callFunction = function () {
         this.stack[idx] = this.runtime.JSUndefined;
         this.initFunctionCall(fun, idx - 1, false);
     } else if (callee.objectType === JSObjectType.NATIVE) {
-        callee.vmFunction.callFn(this, argumentsArray);
+        let result = callee.vmFunction.callFn(this, argumentsArray);
+        // manually handle return
+        // first set the sp to what would've been the new fp
+        this.sp = idx - 1;
+        // push the return value on top of stack
+        this.push(result);
     } else {
         this.panic("Value not callable.");
     }
@@ -3533,7 +3648,7 @@ Vm.prototype.cmpNeq = function () {
     let rhs = this.pop();
 
     // TODO: do it properly for different types
-    this.push(lhs !== rhs);
+    this.push(lhs.neq(rhs));
 };
 
 Vm.prototype.cmpGt = function (strict) {
@@ -3542,9 +3657,9 @@ Vm.prototype.cmpGt = function (strict) {
 
     // TODO: do it properly for different types
     if (strict) {
-        this.push(lhs > rhs);
+        this.push(lhs.gt(rhs, this.runtime));
     } else {
-        this.push(lhs >= rhs);
+        this.push(lhs.geq(rhs, this.runtime));
     }
 };
 
@@ -3554,9 +3669,9 @@ Vm.prototype.cmpLt = function (strict) {
 
     // TODO: do it properly for different types
     if (strict) {
-        this.push(lhs < rhs);
+        this.push(lhs.lt(rhs, this.runtime));
     } else {
-        this.push(lhs <= rhs);
+        this.push(lhs.leq(rhs, this.runtime));
     }
 };
 
@@ -3585,8 +3700,7 @@ Vm.prototype.cmpEq = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    // TODO: do it properly for different types
-    this.push(this.equal(lhs, rhs));
+    this.push(lhs.equal(rhs, this.runtime));
 };
 
 Vm.prototype.getLocal = function () {
@@ -3828,28 +3942,28 @@ Vm.prototype.add = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    this.push(lhs + rhs);
+    this.push(lhs.add(rhs, this.runtime));
 };
 
 Vm.prototype.sub = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    this.push(lhs - rhs);
+    this.push(lhs.sub(rhs, this.runtime));
 };
 
 Vm.prototype.mul = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    this.push(lhs * rhs);
+    this.push(lhs.mul(rhs, this.runtime));
 };
 
 Vm.prototype.div = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    this.push(lhs / rhs);
+    this.push(lhs.div(rhs, this.runtime));
 };
 
 Vm.prototype.pushThis = function () {
@@ -3868,14 +3982,16 @@ Vm.prototype.pushConstant = function () {
 // VM - utils
 //------------------------------------------------------------------
 
-Vm.prototype.equal = function (lhs, rhs) {
-    // TODO: replace with JSTrue
-    return lhs === rhs;
-};
-
 Vm.prototype.isTruthy = function (value) {
-    // TODO: implement this properly
-    return !!value;
+    if (value.type === JSType.STRING) {
+        return value.value !== "";
+    } else if (value.type === JSType.NUMBER) {
+        return value.value !== 0;
+    } else if (value.type === JSType.BOOLEAN) {
+        return value.value;
+    } else {
+        return true;
+    }
 };
 
 /** Fetch constant */
