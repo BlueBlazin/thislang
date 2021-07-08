@@ -1862,6 +1862,34 @@ function objectToString(value) {
 }
 
 //------------------------------------------------------------------
+// Runtime - Common ops
+//------------------------------------------------------------------
+
+function TLCommonEqual(right, runtime) {
+    return this.value === right.value ? runtime.JSTrue : runtime.JSFalse;
+}
+
+function TLCommonLt(right, runtime) {
+    return this.value < right.value ? runtime.JSTrue : runtime.JSFalse;
+}
+
+function TLCommonLeq(right, runtime) {
+    return this.value <= right.value ? runtime.JSTrue : runtime.JSFalse;
+}
+
+function TLCommonGt(right, runtime) {
+    return this.value > right.value ? runtime.JSTrue : runtime.JSFalse;
+}
+
+function TLCommonGeq(right, runtime) {
+    return this.value >= right.value ? runtime.JSTrue : runtime.JSFalse;
+}
+
+function TLCommonNeq(right, runtime) {
+    return this.value !== right.value ? runtime.JSTrue : runtime.JSFalse;
+}
+
+//------------------------------------------------------------------
 // Runtime - Environment
 //------------------------------------------------------------------
 
@@ -1952,24 +1980,6 @@ JSObject.prototype.addProperty = function (key, value, writable) {
 };
 
 //------------------------------------------------------------------
-// Runtime - JSBoolean
-//------------------------------------------------------------------
-
-function JSBoolean(shape, proto, value) {
-    this.type = JSType.BOOLEAN;
-    this.proto = proto;
-    this.value = value;
-    this.shape = shape;
-    this.mappedValues = {
-        "[[__proto__]]": proto,
-    };
-}
-
-JSBoolean.prototype.addProperty = function (key, value, writable) {
-    // can't set properties on booleans
-};
-
-//------------------------------------------------------------------
 // Runtime - JSNumber
 //------------------------------------------------------------------
 
@@ -2003,29 +2013,42 @@ JSNumber.prototype.div = function (right, runtime) {
     return runtime.newNumber(this.value / right.value);
 };
 
-JSNumber.prototype.equal = function (right, runtime) {
-    return this.value === right.value ? runtime.JSTrue : runtime.JSFalse;
+JSNumber.prototype.equal = TLCommonEqual;
+JSNumber.prototype.lt = TLCommonLt;
+JSNumber.prototype.leq = TLCommonLeq;
+JSNumber.prototype.gt = TLCommonGt;
+JSNumber.prototype.geq = TLCommonGeq;
+JSNumber.prototype.neq = TLCommonNeq;
+
+//------------------------------------------------------------------
+// Runtime - JSBoolean
+//------------------------------------------------------------------
+
+function JSBoolean(shape, proto, value) {
+    this.type = JSType.BOOLEAN;
+    this.proto = proto;
+    this.value = value;
+    this.shape = shape;
+    this.mappedValues = {
+        "[[__proto__]]": proto,
+    };
+}
+
+JSBoolean.prototype.addProperty = function (key, value, writable) {
+    // can't set properties on booleans
 };
 
-JSNumber.prototype.lt = function (right, runtime) {
-    return this.value < right.value ? runtime.JSTrue : runtime.JSFalse;
-};
+JSBoolean.prototype.add = JSNumber.prototype.add;
+JSBoolean.prototype.sub = JSNumber.prototype.sub;
+JSBoolean.prototype.mul = JSNumber.prototype.mul;
+JSBoolean.prototype.div = JSNumber.prototype.div;
 
-JSNumber.prototype.leq = function (right, runtime) {
-    return this.value <= right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSNumber.prototype.gt = function (right, runtime) {
-    return this.value > right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSNumber.prototype.geq = function (right, runtime) {
-    return this.value >= right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSNumber.prototype.neq = function (right, runtime) {
-    return this.value !== right.value ? runtime.JSTrue : runtime.JSFalse;
-};
+JSBoolean.prototype.equal = TLCommonEqual;
+JSBoolean.prototype.lt = TLCommonLt;
+JSBoolean.prototype.leq = TLCommonLeq;
+JSBoolean.prototype.gt = TLCommonGt;
+JSBoolean.prototype.geq = TLCommonGeq;
+JSBoolean.prototype.neq = TLCommonNeq;
 
 //------------------------------------------------------------------
 // Runtime - JSString
@@ -2056,25 +2079,12 @@ JSString.prototype.equal = function (right, runtime) {
         : runtime.JSFalse;
 };
 
-JSString.prototype.lt = function (right, runtime) {
-    return this.value < right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSString.prototype.leq = function (right, runtime) {
-    return this.value <= right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSString.prototype.gt = function (right, runtime) {
-    return this.value > right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSString.prototype.geq = function (right, runtime) {
-    return this.value >= right.value ? runtime.JSTrue : runtime.JSFalse;
-};
-
-JSString.prototype.neq = function (right, runtime) {
-    return this.value !== right.value ? runtime.JSTrue : runtime.JSFalse;
-};
+JSString.prototype.equal = TLCommonEqual;
+JSString.prototype.lt = TLCommonLt;
+JSString.prototype.leq = TLCommonLeq;
+JSString.prototype.gt = TLCommonGt;
+JSString.prototype.geq = TLCommonGeq;
+JSString.prototype.neq = TLCommonNeq;
 
 //------------------------------------------------------------------
 // Runtime - JSArray
