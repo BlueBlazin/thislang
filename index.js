@@ -1794,6 +1794,8 @@ let Opcodes = {
     CALL_FUNCTION:     0x25,
     CALL_METHOD:       0x26,
     CALL_CONSTRUCTOR:  0x27,
+    GET_UPVAR:         0x28,
+    SET_UPVAR:         0x29,
 };
 
 //==================================================================
@@ -2309,6 +2311,7 @@ function VMFunction(name, arity) {
     this.constants = [];
     // upvars
     this.upvars = {};
+    this.upvarCount = 0;
 }
 
 //------------------------------------------------------------------
@@ -2350,7 +2353,10 @@ function Compiler(runtime) {
         { name: "", depth: 0, isCaptured: false, ready: true },
         { name: "this", depth: 0, isCaptured: false, ready: true },
     ];
+    this.upvars = [];
     this.localsStack = [];
+    this.upvarsStack = [];
+    // anonymous function counter
     this.anonCount = 0;
 }
 
@@ -2735,10 +2741,20 @@ Compiler.prototype.functionExpr = function (ast) {
         compileFn.bind(this, ast)
     );
 
-    let fun = this.runtime.newFunction(vmFun);
+    vmFun.upvarCount = this.upvars.length;
 
+    let fun = this.runtime.newFunction(vmFun);
     // emit function creation opcode
     this.emitFunction(fun);
+
+    let upvar;
+    for (let i = 0; i < this.upvars.length; i++) {
+        upvar = this.upvars[i];
+        this.emitByte(upvar.isLocal);
+        this.emitByte(upvar.index);
+    }
+
+    this.upvars = this.upvarsStack.pop();
 };
 
 Compiler.prototype.nextAnon = function () {
@@ -2857,10 +2873,17 @@ Compiler.prototype.getOrSetId = function (name, getOp) {
         } else {
             this.emitBytes([Opcodes.SET_LOCAL, idx]);
         }
+    } else if ((idx = this.resolveUpvar(name)) !== null) {
+        // statically resolved upvar
+        if (getOp) {
+            this.emitBytes([Opcodes.GET_UPVAR, idx]);
+        } else {
+            this.emitBytes([Opcodes.SET_UPVAR, idx]);
+        }
     } else {
         // global variable
         idx = this.addConstant(name);
-
+        // dynamically resolved env variable
         if (getOp) {
             this.emitBytes([Opcodes.GET_FROM_ENV, idx]);
         } else {
@@ -2869,10 +2892,58 @@ Compiler.prototype.getOrSetId = function (name, getOp) {
     }
 };
 
-Compiler.prototype.resolveLocal = function (name) {
+Compiler.prototype.resolveUpvar = function (name) {
+    // we're in the outermost function, so name doesn't exist
+    let localsStackSize = this.localsStack.length;
+    if (localsStackSize === 0) {
+        return null;
+    }
+
+    let upvars = this.upvars;
+    let localIdx;
+    let locals;
+    let stackIdx;
+
+    for (stackIdx = localsStackSize - 1; stackIdx >= 0; stackIdx--) {
+        locals = this.localsStack[stackIdx];
+
+        if ((localIdx = this.resolveLocalWith(name, locals)) !== null) {
+            // mark upvar and add as a local
+            locals[localIdx].isCaptured = true;
+            let index = this.addUpvar(upvars, localIdx, true);
+            // unwind
+            while (++stackIdx <= localsStackSize - 1) {
+                upvars = this.upvarsStack[i];
+                index = this.addUpvar(upvars, index, false);
+            }
+
+            return index;
+        }
+
+        upvars = this.upvarsStack[i];
+    }
+
+    return null;
+};
+
+Compiler.prototype.addUpvar = function (upvars, index, isLocal) {
+    // see if it's already captured
+    let upvar;
+    for (let i = 0; i < upvars.length; i++) {
+        upvar = upvars[i];
+        if (upvar.index === index && upvar.isLocal === isLocal) {
+            return index;
+        }
+    }
+
+    upvars.push({ index: index, isLocal: isLocal });
+    return upvars.length - 1;
+};
+
+Compiler.prototype.resolveLocalWith = function (name, locals) {
     let local;
-    for (let idx = this.locals.length - 1; idx >= 0; idx--) {
-        local = this.locals[idx];
+    for (let idx = locals.length - 1; idx >= 0; idx--) {
+        local = locals[idx];
 
         if (local.name === name) {
             if (!local.ready) {
@@ -2883,6 +2954,10 @@ Compiler.prototype.resolveLocal = function (name) {
     }
 
     return null;
+};
+
+Compiler.prototype.resolveLocal = function (name) {
+    return this.resolveLocalWith(name, this.locals);
 };
 
 Compiler.prototype.staticMemberExpr = function (ast) {
@@ -3010,6 +3085,7 @@ Compiler.prototype.withFunctionCtx = function (name, arity, compileFn) {
     let scopeDepth = this.scopeDepth;
     let fun = this.function;
     this.localsStack.push(this.locals);
+    this.upvarsStack.push(this.upvars);
 
     this.scopeDepth = 0;
     this.function = new VMFunction(name, arity, fun.env);
@@ -3017,15 +3093,18 @@ Compiler.prototype.withFunctionCtx = function (name, arity, compileFn) {
         { name: "arguments", depth: 0, isCaptured: false, ready: true },
         { name: "this", depth: 0, isCaptured: false, ready: true },
     ];
+    this.upvars = [];
 
     compileFn();
 
     this.scopeDepth = scopeDepth;
+    // this.upvars = this.upvarsStack.pop();
     this.locals = this.localsStack.pop();
 
     this.emitReturn();
 
     let newFun = this.function;
+    newFun.unvars = this.upvars;
     this.function = fun;
 
     return newFun;
@@ -3181,6 +3260,7 @@ function functionInstr(name, code, constants, state) {
             fun.name
     );
     state.i += 2;
+    state.i += 2 * fun.upvarCount;
 
     state.functions.push(fun);
 }
@@ -3312,6 +3392,12 @@ function dis(code, constants, name) {
                 break;
             case Opcodes.CALL_CONSTRUCTOR:
                 literalInstr("CALL_CONSTRUCTOR", code, state);
+                break;
+            case Opcodes.GET_UPVAR:
+                literalInstr("GET_UPVAR", code, state);
+                break;
+            case Opcodes.SET_UPVAR:
+                literalInstr("SET_UPVAR", code, state);
                 break;
             default:
                 throw Error("Unknown opcode");
