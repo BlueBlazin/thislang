@@ -1796,6 +1796,7 @@ let Opcodes = {
     CALL_CONSTRUCTOR:  0x27,
     GET_UPVAR:         0x28,
     SET_UPVAR:         0x29,
+    CLOSE_UPVAR:       0x2A,
 };
 
 //==================================================================
@@ -2310,7 +2311,7 @@ function VMFunction(name, arity) {
     // constants associated with this function
     this.constants = [];
     // upvars
-    this.upvars = {};
+    this.upvars = [];
     this.upvarCount = 0;
 }
 
@@ -2750,7 +2751,7 @@ Compiler.prototype.functionExpr = function (ast) {
     let upvar;
     for (let i = 0; i < this.upvars.length; i++) {
         upvar = this.upvars[i];
-        this.emitByte(upvar.isLocal);
+        this.emitByte(upvar.isLocal ? 0x01 : 0x00);
         this.emitByte(upvar.index);
     }
 
@@ -2873,7 +2874,13 @@ Compiler.prototype.getOrSetId = function (name, getOp) {
         } else {
             this.emitBytes([Opcodes.SET_LOCAL, idx]);
         }
-    } else if ((idx = this.resolveUpvar(name)) !== null) {
+    } else if (
+        (idx = this.resolveUpvar(
+            name,
+            this.upvars,
+            this.localsStack.length - 1
+        )) !== null
+    ) {
         // statically resolved upvar
         if (getOp) {
             this.emitBytes([Opcodes.GET_UPVAR, idx]);
@@ -2892,35 +2899,24 @@ Compiler.prototype.getOrSetId = function (name, getOp) {
     }
 };
 
-Compiler.prototype.resolveUpvar = function (name) {
-    // we're in the outermost function, so name doesn't exist
-    let localsStackSize = this.localsStack.length;
-    if (localsStackSize === 0) {
+Compiler.prototype.resolveUpvar = function (name, upvars, idx) {
+    if (idx < 0) {
         return null;
     }
 
-    let upvars = this.upvars;
-    let localIdx;
-    let locals;
-    let stackIdx;
+    let index;
+    let locals = this.localsStack[idx];
 
-    for (stackIdx = localsStackSize - 1; stackIdx >= 0; stackIdx--) {
-        locals = this.localsStack[stackIdx];
+    if ((index = this.resolveLocalWith(name, locals)) !== null) {
+        locals[index].isCaptured = true;
+        let res = this.addUpvar(upvars, index, true);
+        return res;
+    }
 
-        if ((localIdx = this.resolveLocalWith(name, locals)) !== null) {
-            // mark upvar and add as a local
-            locals[localIdx].isCaptured = true;
-            let index = this.addUpvar(upvars, localIdx, true);
-            // unwind
-            while (++stackIdx <= localsStackSize - 1) {
-                upvars = this.upvarsStack[i];
-                index = this.addUpvar(upvars, index, false);
-            }
+    index = this.resolveUpvar.call(this, name, this.upvarsStack[idx], idx - 1);
 
-            return index;
-        }
-
-        upvars = this.upvarsStack[i];
+    if (index !== null) {
+        return this.addUpvar(upvars, index, false);
     }
 
     return null;
@@ -2932,7 +2928,7 @@ Compiler.prototype.addUpvar = function (upvars, index, isLocal) {
     for (let i = 0; i < upvars.length; i++) {
         upvar = upvars[i];
         if (upvar.index === index && upvar.isLocal === isLocal) {
-            return index;
+            return i;
         }
     }
 
@@ -3123,7 +3119,7 @@ Compiler.prototype.endScope = function () {
 
         if (local.depth > this.scopeDepth && local.ready) {
             if (local.isCaptured) {
-                // TODO
+                this.emitByte(Opcodes.CLOSE_UPVAR);
             } else {
                 this.emitByte(Opcodes.POP);
             }
@@ -3399,6 +3395,9 @@ function dis(code, constants, name) {
             case Opcodes.SET_UPVAR:
                 literalInstr("SET_UPVAR", code, state);
                 break;
+            case Opcodes.CLOSE_UPVAR:
+                simpleInstr("CLOSE_UPVAR", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3453,6 +3452,9 @@ function Vm(fun, runtime) {
     this.push(runtime.JSUndefined);
     // push `this` on stack slot 1
     this.push(runtime.newEmptyObject());
+
+    // this.openUpvars = {};
+    this.openUpvars = [];
 }
 
 /** Run VM */
@@ -3578,6 +3580,15 @@ Vm.prototype.run = function () {
             case Opcodes.CALL_CONSTRUCTOR:
                 this.callConstructor();
                 break;
+            case Opcodes.GET_UPVAR:
+                this.getUpvar();
+                break;
+            case Opcodes.SET_UPVAR:
+                this.setUpvar();
+                break;
+            case Opcodes.CLOSE_UPVAR:
+                this.closeUpvar(this.sp - 1);
+                break;
         }
     }
 };
@@ -3585,6 +3596,46 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.closeUpvars = function (last) {
+    let upvar;
+    let location;
+    for (let i = this.openUpvars.length - 1; i >= 0; i--) {
+        upvar = this.openUpvars[i];
+        location = upvar.location;
+
+        if (location < last) {
+            break;
+        }
+
+        let value = this.stack[location];
+        upvar.value = value;
+        this.openUpvars.pop();
+    }
+};
+
+Vm.prototype.setUpvar = function () {
+    let idx = this.fetch();
+    let value = this.peek();
+    let upvar = this.currentFun.upvars[idx];
+
+    if (upvar.value !== null) {
+        upvar.value = value;
+    } else {
+        this.stack[upvar.location] = value;
+    }
+};
+
+Vm.prototype.getUpvar = function () {
+    let idx = this.fetch();
+    let upvar = this.currentFun.upvars[idx];
+
+    if (upvar.value !== null) {
+        this.push(upvar.value);
+    } else {
+        this.push(this.stack[upvar.location]);
+    }
+};
 
 Vm.prototype.callConstructor = function () {
     let numArgs = this.fetch();
@@ -3729,14 +3780,55 @@ Vm.prototype.return = function () {
     this.currentFrame = frame;
     this.currentFun = frame.fun;
 
-    // TODO: close upvars
+    this.closeUpvars(poppedFrame.fp);
+
     this.sp = poppedFrame.fp;
     this.push(returnValue);
 };
 
 Vm.prototype.createFunction = function () {
-    this.push(this.fetchConstant());
-    // TODO: handle upvars
+    let fun = this.fetchConstant();
+    this.push(fun);
+
+    let vmFunction = fun.vmFunction;
+    let numUpvars = vmFunction.upvarCount;
+
+    for (let i = 0; i < numUpvars; i++) {
+        let isLocal = this.fetch() !== 0x00;
+        let index = this.fetch();
+
+        let upvar;
+        if (isLocal) {
+            upvar = this.captureUpvar(index);
+        } else {
+            upvar = this.currentFun.upvars[index];
+        }
+
+        vmFunction.upvars.push(upvar);
+    }
+};
+
+Vm.prototype.captureUpvar = function (index) {
+    let location = this.currentFrame.fp + index;
+
+    let upvar;
+    for (let i = this.openUpvars.length - 1; i >= 0; i--) {
+        upvar = this.openUpvars[i];
+
+        if (upvar.location === location) {
+            return upvar;
+        } else if (upvar.location < location) {
+            // since we maintain a sorted order, we can safely
+            // assume no location beyond this point will match
+            // and insert a new upvar here
+            this.openUpvars.splice(i, 0, { location: location, value: null });
+            return upvar;
+        }
+    }
+
+    upvar = { location: location, value: null };
+    this.openUpvars.push(upvar);
+    return upvar;
 };
 
 Vm.prototype.cmpNeq = function () {
