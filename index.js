@@ -2904,13 +2904,12 @@ Compiler.prototype.resolveUpvar = function (name, upvars, idx) {
         return null;
     }
 
-    let index;
     let locals = this.localsStack[idx];
+    let index = this.resolveLocalWith(name, locals);
 
-    if ((index = this.resolveLocalWith(name, locals)) !== null) {
+    if (index !== null) {
         locals[index].isCaptured = true;
-        let res = this.addUpvar(upvars, index, true);
-        return res;
+        return this.addUpvar(upvars, index, true);
     }
 
     index = this.resolveUpvar.call(this, name, this.upvarsStack[idx], idx - 1);
@@ -3463,8 +3462,7 @@ Vm.prototype.run = function () {
     while (this.currentFrame.ip < this.currentFun.code.length) {
         switch (this.fetch()) {
             case Opcodes.POP:
-                let value = this.pop();
-                // console.log("Popping: ", toString(value));
+                this.pop();
                 break;
             case Opcodes.PUSH_CONSTANT:
                 this.pushConstant();
@@ -3612,6 +3610,8 @@ Vm.prototype.closeUpvars = function (last) {
         upvar.value = value;
         this.openUpvars.pop();
     }
+
+    this.pop();
 };
 
 Vm.prototype.setUpvar = function () {
@@ -3793,6 +3793,7 @@ Vm.prototype.createFunction = function () {
     let vmFunction = fun.vmFunction;
     let numUpvars = vmFunction.upvarCount;
 
+    // add upvars
     for (let i = 0; i < numUpvars; i++) {
         let isLocal = this.fetch() !== 0x00;
         let index = this.fetch();
@@ -3812,22 +3813,24 @@ Vm.prototype.captureUpvar = function (index) {
     let location = this.currentFrame.fp + index;
 
     let upvar;
-    for (let i = this.openUpvars.length - 1; i >= 0; i--) {
+    let i;
+    for (i = this.openUpvars.length - 1; i >= 0; i--) {
         upvar = this.openUpvars[i];
-
-        if (upvar.location === location) {
-            return upvar;
-        } else if (upvar.location < location) {
-            // since we maintain a sorted order, we can safely
-            // assume no location beyond this point will match
-            // and insert a new upvar here
-            this.openUpvars.splice(i, 0, { location: location, value: null });
+        if (upvar.location < location) {
+            break;
+        } else if (upvar.location === location) {
             return upvar;
         }
     }
 
     upvar = { location: location, value: null };
-    this.openUpvars.push(upvar);
+
+    if (i === 0) {
+        this.openUpvars.push(upvar);
+    } else {
+        this.openUpvars.splice(i, 0, upvar);
+    }
+
     return upvar;
 };
 
