@@ -176,10 +176,10 @@ Tokenizer.prototype.scanPunctuator = function () {
             }
         case ".":
             if (
+                this.i < this.source.length &&
+                this.source[this.i] === "." &&
                 this.i + 1 < this.source.length &&
-                this.source[this.i + 1] === "." &&
-                this.i + 2 < this.source.length &&
-                this.source[this.i + 2] === "."
+                this.source[this.i + 1] === "."
             ) {
                 // consume the two `.`s
                 this.consume();
@@ -1784,19 +1784,20 @@ let Opcodes = {
     SET_LOCAL:         0x1A,
     SET_FROM_ENV:      0x1B,
     SWAP_TOP_TWO:      0x1C,
-    CMP_LT:            0x1E,
-    CMP_LEQ:           0x1F,
-    CMP_GT:            0x20,
-    CMP_GEQ:           0x21,
-    CMP_NEQ:           0x22,
-    CREATE_FUNCTION:   0x23,
-    RETURN:            0x24,
-    CALL_FUNCTION:     0x25,
-    CALL_METHOD:       0x26,
-    CALL_CONSTRUCTOR:  0x27,
-    GET_UPVAR:         0x28,
-    SET_UPVAR:         0x29,
-    CLOSE_UPVAR:       0x2A,
+    CMP_LT:            0x1D,  
+    CMP_LEQ:           0x1E,
+    CMP_GT:            0x1F,
+    CMP_GEQ:           0x20,
+    CMP_NEQ:           0x21,
+    CREATE_FUNCTION:   0x22,
+    RETURN:            0x23,
+    CALL_FUNCTION:     0x24,
+    CALL_METHOD:       0x25,
+    CALL_CONSTRUCTOR:  0x26,
+    GET_UPVAR:         0x27,
+    SET_UPVAR:         0x28,
+    CLOSE_UPVAR:       0x29,
+    SPREAD:            0x2A,
 };
 
 //==================================================================
@@ -2636,9 +2637,18 @@ Compiler.prototype.expression = function (ast) {
             return this.sequenceExpr(ast);
         case AstType.NEW_EXPR:
             return this.newExpr(ast);
+        case AstType.SPREAD:
+            return this.spreadExpr(ast);
         default:
             this.panic("in expression");
     }
+};
+
+Compiler.prototype.spreadExpr = function (ast) {
+    // compile argument
+    this.expression(ast.argument);
+    // emit opcode
+    this.emitByte(Opcodes.SPREAD);
 };
 
 Compiler.prototype.newExpr = function (ast) {
@@ -2706,7 +2716,7 @@ Compiler.prototype.callExpr = function (ast) {
             this.emitByte(Opcodes.GET_BY_VALUE);
         }
     }
-
+    // compile arguments
     let numArgs = ast.arguments.length;
 
     if (numArgs > UINT8_MAX) {
@@ -2716,7 +2726,7 @@ Compiler.prototype.callExpr = function (ast) {
     for (let i = 0; i < numArgs; i++) {
         this.expression(ast.arguments[i]);
     }
-
+    // emit function or method call opcode
     if (ast.callee.type === AstType.IDENTIFIER) {
         this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
     } else {
@@ -3397,6 +3407,9 @@ function dis(code, constants, name) {
             case Opcodes.CLOSE_UPVAR:
                 simpleInstr("CLOSE_UPVAR", state);
                 break;
+            case Opcodes.SPREAD:
+                simpleInstr("SPREAD", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3587,6 +3600,9 @@ Vm.prototype.run = function () {
             case Opcodes.CLOSE_UPVAR:
                 this.closeUpvar(this.sp - 1);
                 break;
+            case Opcodes.SPREAD:
+                this.spread();
+                break;
         }
     }
 };
@@ -3594,6 +3610,28 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.spread = function () {
+    let argument = this.pop();
+    if (argument.objectType !== JSObjectType.ARRAY) {
+        this.panic("Invalid spread argument type.");
+    }
+    // push values one by one
+    let elements = argument.elements;
+    for (let i = 0; i < elements.length; i++) {
+        this.push(elements[i]);
+    }
+    // modify call instruction's arg count
+    let code = this.currentFun.code;
+    let ip = this.currentFrame.ip;
+    let newArgCount = code[ip + 1] + elements.length - 1;
+
+    if (newArgCount > UINT8_MAX) {
+        this.panic("Too many arguments.");
+    }
+
+    code[ip + 1] = newArgCount;
+};
 
 Vm.prototype.closeUpvars = function (last) {
     let upvar;
@@ -3692,7 +3730,7 @@ Vm.prototype.getFromEnv = function () {
 
 Vm.prototype.callMethod = function () {
     let numArgs = this.fetch();
-
+    console.log("NUM ARGS:", numArgs);
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
