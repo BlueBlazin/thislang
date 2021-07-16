@@ -1974,7 +1974,7 @@ function JSObject(shape, proto) {
 
     // property values
     this.mappedValues = {
-        "[[__proto__]]": proto,
+        "[[__proto__]]": this.proto,
     };
 }
 
@@ -1993,7 +1993,7 @@ function JSNumber(shape, proto, value) {
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
-        "[[__proto__]]": proto,
+        "[[__proto__]]": this.proto,
     };
 }
 
@@ -2034,7 +2034,7 @@ function JSBoolean(shape, proto, value) {
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
-        "[[__proto__]]": proto,
+        "[[__proto__]]": this.proto,
     };
 }
 
@@ -2064,7 +2064,7 @@ function JSString(shape, proto, value) {
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
-        "[[__proto__]]": proto,
+        "[[__proto__]]": this.proto,
         length: value.length,
     };
 }
@@ -2239,7 +2239,6 @@ Runtime.prototype.generateGlobalEnv = function () {
     //--------------------------------------------------
     let TLConsole = this.newEmptyObject();
 
-    // TODO: pass `this`
     TLConsole.addProperty(
         "log",
         this.newNativeFunction("log", function (vm, args) {
@@ -2249,6 +2248,14 @@ Runtime.prototype.generateGlobalEnv = function () {
     );
 
     env.add("console", TLConsole);
+
+    env.add(
+        "print",
+        this.newNativeFunction("print", function (vm, args) {
+            console.log(...args);
+            return vm.runtime.JSUndefined;
+        })
+    );
 
     //--------------------------------------------------
     // Object
@@ -3691,7 +3698,7 @@ Vm.prototype.callConstructor = function () {
 
         let prototypeObject = this.runtime.newEmptyObject();
 
-        prototypeObject.mappedValues["[[__proto__]]"] =
+        prototypeObject.proto =
             callee.indexedValues[shapeTable["prototype"].offset];
 
         // set `this` to the prototype object
@@ -3730,7 +3737,6 @@ Vm.prototype.getFromEnv = function () {
 
 Vm.prototype.callMethod = function () {
     let numArgs = this.fetch();
-    console.log("NUM ARGS:", numArgs);
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4042,9 +4048,7 @@ Vm.prototype.getObjectProp = function (object, id) {
     } else if (object.mappedValues.hasOwnProperty(id)) {
         this.getOrSetId(object.mappedValues, id, false, null);
     } else {
-        // walk the prototype chain and search for property
-        // TODO: implement prototype search
-        this.panic("Unimplemented.");
+        this.getFromProtoChain(object.proto, id);
     }
 };
 
@@ -4120,11 +4124,29 @@ Vm.prototype.cachedGet = function (object) {
             // look up mappedValues
             this.getOrSetId(object.mappedValues, id, false, null);
         } else {
-            // walk the prototype chain and search for property
-            // TODO: implement prototype search
-            this.panic("Unimplemented.");
+            this.getFromProtoChain(object.proto, id);
         }
     }
+};
+
+Vm.prototype.getFromProtoChain = function (proto, id) {
+    let shape;
+
+    while (proto !== null && proto !== undefined) {
+        shape = proto.shape;
+        if (shape.shapeTable.hasOwnProperty(id)) {
+            this.push(proto.indexedValues[shape.shapeTable[id].offset]);
+            return;
+        } else if (proto.mappedValues.hasOwnProperty(id)) {
+            this.push(proto.mappedValues.hasOwnProperty(id));
+            return;
+        } else {
+            // sup dawg i heard you liked protos - so i set proto to proto on proto
+            proto = proto.proto;
+        }
+    }
+    // not found so push undefined
+    this.push(this.runtime.JSUndefined);
 };
 
 Vm.prototype.getOrSetId = function (data, id, setById, value) {
@@ -4281,9 +4303,9 @@ Vm.prototype.pop = function () {
     let parseBtn = document.getElementById("parse-btn");
     let compileBtn = document.getElementById("compile-btn");
     let runBtn = document.getElementById("run-btn");
+    let textArea = document.getElementById("source-code");
 
     parseBtn.onclick = function () {
-        let textArea = document.getElementById("source-code");
         let source = textArea.value;
         let parser = new Parser(source);
         let ast = parser.parse();
@@ -4292,7 +4314,6 @@ Vm.prototype.pop = function () {
     };
 
     compileBtn.onclick = function () {
-        let textArea = document.getElementById("source-code");
         let source = textArea.value;
 
         let parser = new Parser(source);
@@ -4307,7 +4328,6 @@ Vm.prototype.pop = function () {
     };
 
     runBtn.onclick = function () {
-        let textArea = document.getElementById("source-code");
         let source = textArea.value;
 
         let parser = new Parser(source);
