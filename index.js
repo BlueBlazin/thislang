@@ -2412,6 +2412,8 @@ function Compiler(runtime) {
     this.upvarsStack = [];
     // anonymous function counter
     this.anonCount = 0;
+    // breaks stack
+    this.breaksStack = [];
 }
 
 Compiler.prototype.compile = function (ast) {
@@ -2430,6 +2432,7 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.SWITCH_STMT:
         case AstType.WHILE_STMT:
         case AstType.RETURN_STMT:
+        case AstType.BREAK_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -2463,9 +2466,16 @@ Compiler.prototype.statement = function (ast) {
             return;
         case AstType.RETURN_STMT:
             return this.returnStmt(ast);
+        case AstType.BREAK_STMT:
+            return this.breakStmt(ast);
         default:
             this.panic(ast.type);
     }
+};
+
+Compiler.prototype.breakStmt = function (ast) {
+    let breakIdx = this.emitJump(Opcodes.JUMP);
+    this.breaksStack[this.breaksStack.length - 1].push(breakIdx);
 };
 
 Compiler.prototype.returnStmt = function (ast) {
@@ -2490,6 +2500,8 @@ Compiler.prototype.functionDclr = function (ast) {
 };
 
 Compiler.prototype.whileStmt = function (ast) {
+    // start a new breaks stack
+    this.breaksStack.push([]);
     // record next position for looping
     let loopStart = this.function.code.length;
     // compile test
@@ -2503,6 +2515,8 @@ Compiler.prototype.whileStmt = function (ast) {
     this.emitLoop(loopStart);
     // patch jump
     this.patchJump(jumpIdx);
+    // patch breaks
+    this.patchBreaks();
 };
 
 Compiler.prototype.statementList = function (statements) {
@@ -2512,6 +2526,8 @@ Compiler.prototype.statementList = function (statements) {
 };
 
 Compiler.prototype.switchStmt = function (ast) {
+    // start a new breaks stack
+    this.breaksStack.push([]);
     // compile the discriminant
     this.expression(ast.discriminant);
 
@@ -2543,6 +2559,8 @@ Compiler.prototype.switchStmt = function (ast) {
 
     // pop the discriminant
     this.emitByte(Opcodes.POP);
+    // patch breaks
+    this.patchBreaks();
 };
 
 Compiler.prototype.letDclr = function (ast) {
@@ -2795,46 +2813,6 @@ Compiler.prototype.callExpr = function (ast) {
             this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
     }
 };
-// Compiler.prototype.callExpr = function (ast) {
-//     let callee = ast.callee;
-//     if (callee.type === AstType.IDENTIFIER) {
-//         // compile callee
-//         this.expression(callee);
-//         // duplication is needed to account for an extra stack
-//         // slot where the `arguments` array will be stored
-//         this.emitByte(Opcodes.DUPLICATE);
-//     } else {
-//         // compile object
-//         this.expression(callee.object);
-//         // duplicate object
-//         this.emitByte(Opcodes.DUPLICATE);
-//         // emit get opcode
-//         if (callee.type === AstType.STATIC_MEMBER_EXPR) {
-//             this.staticMemberProperty(Opcodes.GET_BY_ID, callee.property);
-//         } else if (callee.type === AstType.COMPUTED_MEMBER_EXPR) {
-//             // compile property value
-//             this.expression(callee.property);
-//             // emit opcode
-//             this.emitByte(Opcodes.GET_BY_VALUE);
-//         }
-//     }
-//     // compile arguments
-//     let numArgs = ast.arguments.length;
-
-//     if (numArgs > UINT8_MAX) {
-//         this.panic("Too many arguments to function");
-//     }
-
-//     for (let i = 0; i < numArgs; i++) {
-//         this.expression(ast.arguments[i]);
-//     }
-//     // emit function or method call opcode
-//     if (ast.callee.type === AstType.IDENTIFIER) {
-//         this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
-//     } else {
-//         this.emitBytes([Opcodes.CALL_METHOD, numArgs]);
-//     }
-// };
 
 Compiler.prototype.functionExpr = function (ast) {
     function compileFn(ast) {
@@ -3187,6 +3165,15 @@ Compiler.prototype.string = function (ast) {
 //------------------------------------------------------------------
 // Compiler - utils
 //------------------------------------------------------------------
+
+Compiler.prototype.patchBreaks = function () {
+    let breaks = this.breaksStack.pop();
+    let breakIdx;
+    for (let i = 0; i < breaks.length; i++) {
+        breakIdx = breaks[i];
+        this.patchJump(breakIdx);
+    }
+};
 
 Compiler.prototype.withFunctionCtx = function (name, arity, compileFn) {
     let scopeDepth = this.scopeDepth;
