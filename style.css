@@ -59,6 +59,14 @@
   font-size: 18px;
 }
 
+#tokenize-btn {
+  background: linear-gradient(45deg, rgb(59, 227, 95) 0%, rgb(87, 161, 230) 25%, rgb(89, 68, 183) 51%, rgb(255, 53, 255) 100%);
+}
+
+#tokenize-btn:hover {
+  background: linear-gradient(45deg, rgb(48, 184, 89) 0%, rgb(78, 112, 204) 25%, rgb(150, 55, 145) 51%, rgb(231, 48, 63) 100%);
+}
+
 #parse-btn {
   background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%);
 }

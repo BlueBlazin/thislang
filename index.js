@@ -1807,7 +1807,7 @@ let Opcodes = {
 // prettier-ignore
 let JSType = {
     NUMBER:     0x00,
-    BOOLEAN:       0x01,
+    BOOLEAN:    0x01,
     NULL:       0x02,
     UNDEFINED:  0x03,
     STRING:     0x04,
@@ -2268,6 +2268,51 @@ Runtime.prototype.generateGlobalEnv = function () {
         }
     });
 
+    TLObject.addProperty(
+        "getPrototypeOf",
+        this.newNativeFunction("getPrototypeOf", function (vm, args) {
+            if (args.length === 0) {
+                vm.panic("Cannot convert null or undefined to object.");
+            } else {
+                return args[0].proto;
+            }
+        })
+    );
+
+    TLObject.addProperty(
+        "is",
+        this.newNativeFunction("is", function (vm, args) {
+            let numArgs = args.length;
+            switch (numArgs) {
+                case 0:
+                    return vm.runtime.JSTrue;
+                case 2:
+                    let type1 = args[0].type;
+                    let type2 = args[0].type;
+                    if (type1 !== type2) {
+                        return vm.runtime.JSFalse;
+                    }
+                    switch (type1) {
+                        case JSType.NULL:
+                        case JSType.UNDEFINED:
+                            return vm.runtime.JSTrue;
+                        case JSType.NUMBER:
+                        case JSType.BOOLEAN:
+                        case JSType.STRING:
+                            return Object.is(args[0].value, args[1].value)
+                                ? vm.runtime.JSTrue
+                                : vm.runtime.JSFalse;
+                        default:
+                            return Object.is(args[0], args[1])
+                                ? vm.runtime.JSTrue
+                                : vm.runtime.JSFalse;
+                    }
+                default:
+                    return vm.runtime.JSFalse;
+            }
+        })
+    );
+
     env.add("Object", TLObject);
     //--------------------------------------------------
     // Boolean
@@ -2702,27 +2747,34 @@ Compiler.prototype.computedMemberExpr = function (ast) {
 
 Compiler.prototype.callExpr = function (ast) {
     let callee = ast.callee;
-    if (callee.type === AstType.IDENTIFIER) {
-        // compile callee
-        this.expression(callee);
-        // duplication is needed to account for an extra stack
-        // slot where the `arguments` array will be stored
-        this.emitByte(Opcodes.DUPLICATE);
-    } else {
-        // compile object
-        this.expression(callee.object);
-        // duplicate object
-        this.emitByte(Opcodes.DUPLICATE);
-        // emit get opcode
-        if (callee.type === AstType.STATIC_MEMBER_EXPR) {
+
+    switch (callee.type) {
+        case AstType.STATIC_MEMBER_EXPR:
+            // compile object
+            this.expression(callee.object);
+            // duplicate object
+            this.emitByte(Opcodes.DUPLICATE);
+            // emit get opcode
             this.staticMemberProperty(Opcodes.GET_BY_ID, callee.property);
-        } else {
+            break;
+        case AstType.COMPUTED_MEMBER_EXPR:
+            // compile object
+            this.expression(callee.object);
+            // duplicate object
+            this.emitByte(Opcodes.DUPLICATE);
             // compile property value
             this.expression(callee.property);
             // emit opcode
             this.emitByte(Opcodes.GET_BY_VALUE);
-        }
+            break;
+        default:
+            // compile callee
+            this.expression(callee);
+            // duplication is needed to account for an extra stack
+            // slot where the `arguments` array will be stored
+            this.emitByte(Opcodes.DUPLICATE);
     }
+
     // compile arguments
     let numArgs = ast.arguments.length;
 
@@ -2734,12 +2786,55 @@ Compiler.prototype.callExpr = function (ast) {
         this.expression(ast.arguments[i]);
     }
     // emit function or method call opcode
-    if (ast.callee.type === AstType.IDENTIFIER) {
-        this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
-    } else {
-        this.emitBytes([Opcodes.CALL_METHOD, numArgs]);
+    switch (callee.type) {
+        case AstType.STATIC_MEMBER_EXPR:
+        case AstType.COMPUTED_MEMBER_EXPR:
+            this.emitBytes([Opcodes.CALL_METHOD, numArgs]);
+            break;
+        default:
+            this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
     }
 };
+// Compiler.prototype.callExpr = function (ast) {
+//     let callee = ast.callee;
+//     if (callee.type === AstType.IDENTIFIER) {
+//         // compile callee
+//         this.expression(callee);
+//         // duplication is needed to account for an extra stack
+//         // slot where the `arguments` array will be stored
+//         this.emitByte(Opcodes.DUPLICATE);
+//     } else {
+//         // compile object
+//         this.expression(callee.object);
+//         // duplicate object
+//         this.emitByte(Opcodes.DUPLICATE);
+//         // emit get opcode
+//         if (callee.type === AstType.STATIC_MEMBER_EXPR) {
+//             this.staticMemberProperty(Opcodes.GET_BY_ID, callee.property);
+//         } else if (callee.type === AstType.COMPUTED_MEMBER_EXPR) {
+//             // compile property value
+//             this.expression(callee.property);
+//             // emit opcode
+//             this.emitByte(Opcodes.GET_BY_VALUE);
+//         }
+//     }
+//     // compile arguments
+//     let numArgs = ast.arguments.length;
+
+//     if (numArgs > UINT8_MAX) {
+//         this.panic("Too many arguments to function");
+//     }
+
+//     for (let i = 0; i < numArgs; i++) {
+//         this.expression(ast.arguments[i]);
+//     }
+//     // emit function or method call opcode
+//     if (ast.callee.type === AstType.IDENTIFIER) {
+//         this.emitBytes([Opcodes.CALL_FUNCTION, numArgs]);
+//     } else {
+//         this.emitBytes([Opcodes.CALL_METHOD, numArgs]);
+//     }
+// };
 
 Compiler.prototype.functionExpr = function (ast) {
     function compileFn(ast) {
@@ -3213,7 +3308,7 @@ Compiler.prototype.emitBytes = function (bytes) {
 
 function simpleInstr(name, state) {
     state.disassembly.push(
-        String(state.i).padStart(5, "0") + ":    " + name.padEnd(14, " ")
+        String(state.i).padStart(5, "0") + ":    " + name.padEnd(18, " ")
     );
     state.i++;
 }
@@ -3223,7 +3318,7 @@ function constInstr(name, code, constants, state) {
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
             ":    " +
-            name.padEnd(14, " ") +
+            name.padEnd(18, " ") +
             " " +
             toString(constants[idx])
     );
@@ -3235,7 +3330,7 @@ function literalInstr(name, code, state) {
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
             ":    " +
-            name.padEnd(14, " ") +
+            name.padEnd(18, " ") +
             " " +
             idx
     );
@@ -3253,7 +3348,7 @@ function jumpInstr(name, code, state, isLoop) {
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
             ":    " +
-            name.padEnd(14, " ") +
+            name.padEnd(18, " ") +
             " -> " +
             String(idx).padStart(5, "0")
     );
@@ -3267,7 +3362,7 @@ function functionInstr(name, code, constants, state) {
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
             ":    " +
-            name.padEnd(14, " ") +
+            name.padEnd(18, " ") +
             " " +
             fun.name
     );
@@ -4300,10 +4395,25 @@ Vm.prototype.pop = function () {
 //==================================================================
 
 (function () {
+    let tokenizeBtn = document.getElementById("tokenize-btn");
     let parseBtn = document.getElementById("parse-btn");
     let compileBtn = document.getElementById("compile-btn");
     let runBtn = document.getElementById("run-btn");
     let textArea = document.getElementById("source-code");
+
+    tokenizeBtn.onclick = function () {
+        let source = textArea.value;
+        let tokenizer = new Tokenizer(source);
+
+        let token;
+        while (true) {
+            token = tokenizer.next();
+            console.log(token);
+            if (token.type === TokenType.EOF) {
+                break;
+            }
+        }
+    };
 
     parseBtn.onclick = function () {
         let source = textArea.value;
