@@ -1802,12 +1802,11 @@ let Opcodes = {
     SET_UPVAR:         0x28,
     CLOSE_UPVAR:       0x29,
     SPREAD:            0x2A,
-    // LOGIC_OR:          0x2B,
-    // LOGIC_AND:         0x2C,
     OR:                0x2B,
     AND:               0x2C,
     XOR:               0x2D,
     MOD:               0x2E,
+    NOT:               0x2F,
 };
 
 //==================================================================
@@ -2739,9 +2738,18 @@ Compiler.prototype.expression = function (ast) {
             return this.newExpr(ast);
         case AstType.SPREAD:
             return this.spreadExpr(ast);
+        case AstType.UNARY_EXPR:
+            return this.unaryExpr(ast);
         default:
             this.panic("in expression");
     }
+};
+
+Compiler.prototype.unaryExpr = function (ast) {
+    // compile argument
+    this.expression(ast.argument);
+    // emit opcode
+    this.emitByte(Opcodes.NOT);
 };
 
 Compiler.prototype.spreadExpr = function (ast) {
@@ -3583,6 +3591,9 @@ function dis(code, constants, name) {
             case Opcodes.MOD:
                 simpleInstr("MOD", state);
                 break;
+            case Opcodes.NOT:
+                simpleInstr("NOT", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3788,6 +3799,9 @@ Vm.prototype.run = function () {
             case Opcodes.MOD:
                 this.mod();
                 break;
+            case Opcodes.NOT:
+                this.not();
+                break;
         }
     }
 };
@@ -3795,6 +3809,11 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.not = function () {
+    let truthValue = this.isTruthy(this.pop());
+    this.push(truthValue ? this.runtime.JSFalse : this.runtime.JSTrue);
+};
 
 Vm.prototype.mod = function () {
     let lhs = this.pop();
