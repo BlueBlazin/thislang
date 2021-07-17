@@ -1988,9 +1988,21 @@ function JSObject(shape, proto) {
 }
 
 JSObject.prototype.addProperty = function (key, value, writable) {
-    this.shape = this.shape.transition(key);
-    this.indexedValues.push(value);
+    if (this.indexedValues.length < UINT8_MAX) {
+        this.shape = this.shape.transition(key);
+        this.indexedValues.push(value);
+    } else {
+        this.mappedValues[key] = value;
+    }
 };
+
+// JSObject.prototype.equal = function (right, runtime) {
+//     return this === right ? runtime.JSTrue : runtime.JSFalse;
+// };
+
+// JSObject.prototype.neq = function (right, runtime) {
+//     return this !== right ? runtime.JSTrue : runtime.JSFalse;
+// };
 
 //------------------------------------------------------------------
 // Runtime - JSNumber
@@ -2087,14 +2099,14 @@ JSBoolean.prototype.neq = TLCommonNeq;
 // Runtime - JSString
 //------------------------------------------------------------------
 
-function JSString(shape, proto, value) {
+function JSString(shape, proto, value, stringLength) {
     this.type = JSType.STRING;
     this.proto = proto;
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
         "[[__proto__]]": this.proto,
-        length: value.length,
+        length: stringLength,
     };
 }
 
@@ -2147,13 +2159,36 @@ JSFunction.prototype = Object.create(JSObject.prototype);
 JSFunction.prototype.constructor = JSFunction;
 
 //------------------------------------------------------------------
+// Runtime - JSNull & JSUndefined
+//------------------------------------------------------------------
+
+function JSNull() {
+    this.type = JSType.NULL;
+}
+
+JSNull.prototype.equal = function (right, runtime) {
+    return this.type === right.type ? runtime.JSTrue : runtime.JSFalse;
+};
+
+JSNull.prototype.neq = function (right, runtime) {
+    return this.type !== right.type ? runtime.JSTrue : runtime.JSFalse;
+};
+
+function JSUndefined() {
+    this.type = JSType.UNDEFINED;
+}
+
+JSUndefined.prototype.equal = JSNull.prototype.equal;
+JSUndefined.prototype.neq = JSNull.prototype.neq;
+
+//------------------------------------------------------------------
 // Runtime - Runtime
 //------------------------------------------------------------------
 
 function Runtime() {
     // primitive constants
-    this.JSNull = { type: JSType.NULL };
-    this.JSUndefined = { type: JSType.UNDEFINED };
+    this.JSNull = new JSNull();
+    this.JSUndefined = new JSUndefined();
 
     this.emptyObjectShape = new Shape("", null, null);
 
@@ -2221,7 +2256,14 @@ Runtime.prototype.newNumber = function (value) {
 };
 
 Runtime.prototype.newString = function (value) {
-    return new JSString(this.emptyObjectShape, this.JSStringPrototype, value);
+    let string = new JSString(
+        this.emptyObjectShape,
+        this.JSStringPrototype,
+        value,
+        this.newNumber(value.length)
+    );
+
+    return string;
 };
 
 Runtime.prototype.newFunction = function (vmFunction) {
@@ -2246,7 +2288,7 @@ Runtime.prototype.newArray = function (elements) {
         elements
     );
 
-    array.addProperty("length", elements.length, true);
+    array.addProperty("length", this.newNumber(elements.length), true);
 
     return array;
 };
@@ -2428,7 +2470,7 @@ InlineCache.prototype.getShape = function (key) {
 /** Bytecode Compiler */
 function Compiler(runtime) {
     this.runtime = runtime;
-    this.function = new VMFunction(null, 0);
+    this.function = new VMFunction("<script>", 0);
     this.scopeDepth = 0;
     // the first entry has no name since `arguments` is not defined
     // at the top level
@@ -3094,7 +3136,7 @@ Compiler.prototype.staticMemberProperty = function (opcode, property) {
     // emit opcode
     this.emitByte(opcode);
     // emit constant index of property id
-    let index = this.addConstant(property);
+    let index = this.addConstant(this.runtime.newString(property));
     this.emitByte(index);
     // ------ Inline cache info ----------
     // TODO: handle 8 bit limit for IC
@@ -3234,7 +3276,7 @@ Compiler.prototype.number = function (ast) {
     if (value < 0xff) {
         this.emitBytes([Opcodes.PUSH_INT, value]);
     } else {
-        this.emitPushConstant(value);
+        this.emitPushConstant(this.runtime.newNumber(value));
     }
 };
 
@@ -3967,6 +4009,10 @@ Vm.prototype.callMethod = function () {
     let callee = this.stack[idx];
     // inner function
     let fun = callee.vmFunction;
+
+    if (fun === undefined) {
+        this.panic("Not a method.");
+    }
     // get object from which method was called
     let object = this.stack[idx - 1];
 
@@ -3996,6 +4042,10 @@ Vm.prototype.callFunction = function () {
     let callee = this.stack[idx];
     // inner function
     let fun = callee.vmFunction;
+
+    if (fun === undefined) {
+        this.panic("Not a function.");
+    }
     // create and set the `arguments` array
     let argumentsArray = this.setArgumentsArray(fun, idx, numArgs);
 
@@ -4228,30 +4278,29 @@ Vm.prototype.getByValue = function () {
     let id = this.pop();
     // pop object
     let object = this.pop();
+
     if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
-        return this.getArrayElem(object, id);
+        return this.getArrayElem(object, id.value);
     } else if (object.type === JSType.STRING && id.type === JSType.NUMBER) {
-        return this.getStringChar(object, id);
+        return this.getStringChar(object, id.value);
     } else {
         return this.getObjectProp(object, id.value);
     }
 };
 
-Vm.prototype.getStringChar = function (object, id) {
-    let idx = id.value;
+Vm.prototype.getStringChar = function (object, idx) {
     // strings always have a length property on
     // mappedValues (invariant)
-    let length = object.mappedValues.length;
+    let length = object.mappedValues.length.value;
 
     if (idx < length) {
-        this.push(object.value[idx]);
+        this.push(this.runtime.newString(object.value[idx]));
     } else {
         this.push(this.runtime.JSUndefined);
     }
 };
 
-Vm.prototype.getArrayElem = function (object, id) {
-    let idx = id.value;
+Vm.prototype.getArrayElem = function (object, idx) {
     // array length is always offset 0 (invariant)
     let length = object.indexedValues[0];
 
@@ -4286,6 +4335,8 @@ Vm.prototype.setById = function () {
         let value = this.pop();
         // set property value
         this.cachedSet(object, value);
+    } else {
+        this.panic("not an object");
     }
 };
 
@@ -4300,7 +4351,7 @@ Vm.prototype.cachedSet = function (object, value) {
     // get shape
     let shape = object.shape;
     // fetch id, shape index, and offset
-    let id = this.fetchConstant();
+    let id = this.fetchConstant().value;
     let cacheIdx = this.fetch();
     let cacheOffset = this.fetch();
 
@@ -4330,7 +4381,7 @@ Vm.prototype.cachedGet = function (object) {
     // get shape
     let shape = object.shape;
     // fetch id, shape index, and offset
-    let id = this.fetchConstant();
+    let id = this.fetchConstant().value;
     let cacheIdx = this.fetch();
     let cacheOffset = this.fetch();
 
@@ -4486,8 +4537,15 @@ Vm.prototype.fetch = function () {
     return this.currentFun.code[this.currentFrame.ip++];
 };
 
+Vm.prototype.stackTrace = function () {
+    while (this.frames.length > 0) {
+        console.error("at " + this.frames.pop().fun.name);
+    }
+};
+
 /** Panic */
 Vm.prototype.panic = function (msg) {
+    this.stackTrace();
     throw Error(msg);
 };
 
