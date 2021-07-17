@@ -359,7 +359,7 @@ Tokenizer.prototype.peek = function (n) {
 };
 
 Tokenizer.prototype.token = function (type, value) {
-    return { type, value, line: this.line };
+    return { type: type, value: value, line: this.line };
 };
 
 /** Scan and return characters while predicate is true or EOF. */
@@ -1343,7 +1343,7 @@ Parser.prototype.callArguments = function () {
         ) {
             this.advance();
         } else {
-            if (nextToken.value !== ")" && nextToken.value !== "...") {
+            if (nextToken.value !== ")") {
                 this.panic("Unexpected token " + nextToken.value);
             }
         }
@@ -1352,13 +1352,17 @@ Parser.prototype.callArguments = function () {
     }
 
     function predicate(token) {
-        return token.value !== ")" && token.value !== "...";
+        return (
+            token.type !== TokenType.PUNCTUATOR ||
+            (token.value !== ")" && token.value !== "...")
+        );
     }
 
     let args = this.parseWithWhile(parseFn.bind(this), predicate);
 
     let nextToken = this.peek(0);
     if (nextToken.type === TokenType.PUNCTUATOR && nextToken.value === "...") {
+        // consume `...`
         this.advance();
         let argument = this.assignmentExpr();
         args.push({
@@ -1719,7 +1723,7 @@ Parser.prototype.expect = function (tokenType, value) {
         nextToken.type !== tokenType ||
         (value !== null && value !== nextToken.value)
     ) {
-        this.panic(nextToken.value);
+        this.panic(nextToken.value + " expected: " + value);
     }
 
     return nextToken;
@@ -1798,6 +1802,12 @@ let Opcodes = {
     SET_UPVAR:         0x28,
     CLOSE_UPVAR:       0x29,
     SPREAD:            0x2A,
+    // LOGIC_OR:          0x2B,
+    // LOGIC_AND:         0x2C,
+    OR:                0x2B,
+    AND:               0x2C,
+    XOR:               0x2D,
+    MOD:               0x2E,
 };
 
 //==================================================================
@@ -2017,6 +2027,22 @@ JSNumber.prototype.div = function (right, runtime) {
     return runtime.newNumber(this.value / right.value);
 };
 
+JSNumber.prototype.or = function (right, runtime) {
+    return runtime.newNumber(this.value | right.value);
+};
+
+JSNumber.prototype.and = function (right, runtime) {
+    return runtime.newNumber(this.value & right.value);
+};
+
+JSNumber.prototype.mod = function (right, runtime) {
+    return runtime.newNumber(this.value % right.value);
+};
+
+JSNumber.prototype.xor = function (right, runtime) {
+    return runtime.newNumber(this.value ^ right.value);
+};
+
 JSNumber.prototype.equal = TLCommonEqual;
 JSNumber.prototype.lt = TLCommonLt;
 JSNumber.prototype.leq = TLCommonLeq;
@@ -2046,6 +2072,10 @@ JSBoolean.prototype.add = JSNumber.prototype.add;
 JSBoolean.prototype.sub = JSNumber.prototype.sub;
 JSBoolean.prototype.mul = JSNumber.prototype.mul;
 JSBoolean.prototype.div = JSNumber.prototype.div;
+JSBoolean.prototype.or = JSNumber.prototype.or;
+JSBoolean.prototype.and = JSNumber.prototype.and;
+JSBoolean.prototype.xor = JSNumber.prototype.xor;
+JSBoolean.prototype.mod = JSNumber.prototype.mod;
 
 JSBoolean.prototype.equal = TLCommonEqual;
 JSBoolean.prototype.lt = TLCommonLt;
@@ -3107,37 +3137,79 @@ Compiler.prototype.object = function (ast) {
 };
 
 Compiler.prototype.binary = function (ast) {
+    switch (ast.operator) {
+        case "+":
+            return this.compileArgsAndEmit(ast, Opcodes.ADD);
+        case "-":
+            return this.compileArgsAndEmit(ast, Opcodes.SUB);
+        case "*":
+            return this.compileArgsAndEmit(ast, Opcodes.MUL);
+        case "/":
+            return this.compileArgsAndEmit(ast, Opcodes.DIV);
+        case "<":
+            return this.compileArgsAndEmit(ast, Opcodes.CMP_LT);
+        case "<=":
+            return this.compileArgsAndEmit(ast, Opcodes.CMP_LEQ);
+        case ">":
+            return this.compileArgsAndEmit(ast, Opcodes.CMP_GT);
+        case ">=":
+            return this.compileArgsAndEmit(ast, Opcodes.CMP_GEQ);
+        case "==":
+        case "===":
+            return this.compileArgsAndEmit(ast, Opcodes.CMP_EQ);
+        case "!=":
+        case "!==":
+            return this.compileArgsAndEmit(ast, Opcodes.CMP_NEQ);
+        case "||":
+            return this.logicalOr(ast);
+        case "&&":
+            return this.logicalAnd(ast);
+        case "|":
+            return this.compileArgsAndEmit(ast, Opcodes.OR);
+        case "&":
+            return this.compileArgsAndEmit(ast, Opcodes.AND);
+        case "^":
+            return this.compileArgsAndEmit(ast, Opcodes.XOR);
+        case "%":
+            return this.compileArgsAndEmit(ast, Opcodes.MOD);
+        default:
+            this.panic("Invalid binary operator " + ast.operator);
+    }
+};
+
+Compiler.prototype.logicalAnd = function (ast) {
+    // compile LHS
+    this.expression(ast.lhs);
+    // jump to end if false
+    this.emitByte(Opcodes.DUPLICATE);
+    let jumpIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
+    // pop off LHS and compile RHS
+    this.emitByte(Opcodes.POP);
+    this.expression(ast.rhs);
+    // patch jump
+    this.patchJump(jumpIdx);
+};
+
+Compiler.prototype.logicalOr = function (ast) {
+    // compile LHS
+    this.expression(ast.lhs);
+    // jump to end if true
+    this.emitByte(Opcodes.DUPLICATE);
+    let jumpIdx = this.emitJump(Opcodes.JUMP_IF_TRUE);
+    // pop off LHS and compile RHS
+    this.emitByte(Opcodes.POP);
+    this.expression(ast.rhs);
+    // patch jump
+    this.patchJump(jumpIdx);
+};
+
+Compiler.prototype.compileArgsAndEmit = function (ast, opcode) {
     // compile RHS
     this.expression(ast.rhs);
     // compile LHS
     this.expression(ast.lhs);
-    // emit binary opcode
-    switch (ast.operator) {
-        case "+":
-            return this.emitByte(Opcodes.ADD);
-        case "-":
-            return this.emitByte(Opcodes.SUB);
-        case "*":
-            return this.emitByte(Opcodes.MUL);
-        case "/":
-            return this.emitByte(Opcodes.DIV);
-        case "<":
-            return this.emitByte(Opcodes.CMP_LT);
-        case "<=":
-            return this.emitByte(Opcodes.CMP_LEQ);
-        case ">":
-            return this.emitByte(Opcodes.CMP_GT);
-        case ">=":
-            return this.emitByte(Opcodes.CMP_GEQ);
-        case "==":
-        case "===":
-            return this.emitByte(Opcodes.CMP_EQ);
-        case "!=":
-        case "!==":
-            return this.emitByte(Opcodes.CMP_NEQ);
-        default:
-            this.panic("Invalid binary operator " + ast.operator);
-    }
+    // emit opcode
+    this.emitByte(opcode);
 };
 
 Compiler.prototype.boolean = function (ast) {
@@ -3499,6 +3571,18 @@ function dis(code, constants, name) {
             case Opcodes.SPREAD:
                 simpleInstr("SPREAD", state);
                 break;
+            case Opcodes.OR:
+                simpleInstr("OR", state);
+                break;
+            case Opcodes.AND:
+                simpleInstr("AND", state);
+                break;
+            case Opcodes.XOR:
+                simpleInstr("XOR", state);
+                break;
+            case Opcodes.MOD:
+                simpleInstr("MOD", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3692,6 +3776,18 @@ Vm.prototype.run = function () {
             case Opcodes.SPREAD:
                 this.spread();
                 break;
+            case Opcodes.OR:
+                this.or();
+                break;
+            case Opcodes.AND:
+                this.and();
+                break;
+            case Opcodes.XOR:
+                this.xor();
+                break;
+            case Opcodes.MOD:
+                this.mod();
+                break;
         }
     }
 };
@@ -3699,6 +3795,34 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.mod = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    this.push(lhs.mod(rhs, this.runtime));
+};
+
+Vm.prototype.xor = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    this.push(lhs.xor(rhs, this.runtime));
+};
+
+Vm.prototype.and = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    this.push(lhs.and(rhs, this.runtime));
+};
+
+Vm.prototype.or = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    this.push(lhs.or(rhs, this.runtime));
+};
 
 Vm.prototype.spread = function () {
     let argument = this.pop();
