@@ -1415,6 +1415,8 @@ Parser.prototype.primary = function () {
                     value: token.value,
                     line: token.line,
                 };
+            } else if (token.value === "undefined") {
+                return this.identifier();
             } else {
                 this.panic(token.value);
             }
@@ -2293,17 +2295,19 @@ Runtime.prototype.newArray = function (elements) {
     return array;
 };
 
-Runtime.prototype.newNativeFunction = function (name, nativeFunction) {
+Runtime.prototype.newNativeFunction = function (name, arity, nativeFunction) {
     return new JSFunction(
         this.emptyObjectShape,
         this.JSFunctionPrototype,
         JSObjectType.NATIVE,
-        new NativeFunction(name, nativeFunction)
+        new NativeFunction(name, arity, nativeFunction)
     );
 };
 
 Runtime.prototype.generateGlobalEnv = function () {
     let env = new Env(null);
+
+    env.add("undefined", this.JSUndefined);
 
     //--------------------------------------------------
     // console
@@ -2312,7 +2316,7 @@ Runtime.prototype.generateGlobalEnv = function () {
 
     TLConsole.addProperty(
         "log",
-        this.newNativeFunction("log", function (vm, args) {
+        this.newNativeFunction("log", 0, function (vm, args) {
             console.log(...args.map(toString));
             return vm.runtime.JSUndefined;
         })
@@ -2322,7 +2326,7 @@ Runtime.prototype.generateGlobalEnv = function () {
 
     env.add(
         "print",
-        this.newNativeFunction("print", function (vm, args) {
+        this.newNativeFunction("print", 0, function (vm, args) {
             console.log(...args);
             return vm.runtime.JSUndefined;
         })
@@ -2331,7 +2335,7 @@ Runtime.prototype.generateGlobalEnv = function () {
     //--------------------------------------------------
     // Object
     //--------------------------------------------------
-    let TLObject = this.newNativeFunction("Object", function (vm, args) {
+    let TLObject = this.newNativeFunction("Object", 0, function (vm, args) {
         if (args.length === 0) {
             return vm.runtime.newEmptyObject();
         } else {
@@ -2341,8 +2345,11 @@ Runtime.prototype.generateGlobalEnv = function () {
 
     TLObject.addProperty(
         "getPrototypeOf",
-        this.newNativeFunction("getPrototypeOf", function (vm, args) {
-            if (args.length === 0) {
+        this.newNativeFunction("getPrototypeOf", 1, function (vm, args) {
+            if (
+                args[0].type === JSType.UNDEFINED ||
+                args[0].type === JSType.NULL
+            ) {
                 vm.panic("Cannot convert null or undefined to object.");
             } else {
                 return args[0].proto;
@@ -2352,34 +2359,28 @@ Runtime.prototype.generateGlobalEnv = function () {
 
     TLObject.addProperty(
         "is",
-        this.newNativeFunction("is", function (vm, args) {
-            let numArgs = args.length;
-            switch (numArgs) {
-                case 0:
+        this.newNativeFunction("is", 2, function (vm, args) {
+            let type1 = args[0].type;
+            let type2 = args[1].type;
+
+            if (type1 !== type2) {
+                return vm.runtime.JSFalse;
+            }
+
+            switch (type1) {
+                case JSType.NULL:
+                case JSType.UNDEFINED:
                     return vm.runtime.JSTrue;
-                case 2:
-                    let type1 = args[0].type;
-                    let type2 = args[0].type;
-                    if (type1 !== type2) {
-                        return vm.runtime.JSFalse;
-                    }
-                    switch (type1) {
-                        case JSType.NULL:
-                        case JSType.UNDEFINED:
-                            return vm.runtime.JSTrue;
-                        case JSType.NUMBER:
-                        case JSType.BOOLEAN:
-                        case JSType.STRING:
-                            return Object.is(args[0].value, args[1].value)
-                                ? vm.runtime.JSTrue
-                                : vm.runtime.JSFalse;
-                        default:
-                            return Object.is(args[0], args[1])
-                                ? vm.runtime.JSTrue
-                                : vm.runtime.JSFalse;
-                    }
+                case JSType.NUMBER:
+                case JSType.BOOLEAN:
+                case JSType.STRING:
+                    return args[0].value === args[1].value
+                        ? vm.runtime.JSTrue
+                        : vm.runtime.JSFalse;
                 default:
-                    return vm.runtime.JSFalse;
+                    return Object.is(args[0], args[1])
+                        ? vm.runtime.JSTrue
+                        : vm.runtime.JSFalse;
             }
         })
     );
@@ -2412,11 +2413,11 @@ Runtime.prototype.cloneObject = function (object) {
 // Runtime - NativeFunction
 //------------------------------------------------------------------
 
-function NativeFunction(name, callFn) {
+function NativeFunction(name, arity, callFn) {
     // function name
     this.name = name;
     // number of parameters
-    this.arity = 0;
+    this.arity = arity;
     // function
     this.callFn = callFn;
 }
@@ -3707,13 +3708,13 @@ Vm.prototype.run = function () {
                 this.pushConstant();
                 break;
             case Opcodes.PUSH_TRUE:
-                this.push(true);
+                this.push(this.runtime.JSTrue);
                 break;
             case Opcodes.PUSH_FALSE:
-                this.push(false);
+                this.push(this.runtime.JSFalse);
                 break;
             case Opcodes.PUSH_NULL:
-                this.push(null);
+                this.push(this.runtime.JSNull);
                 break;
             case Opcodes.PUSH_THIS:
                 this.pushThis();
@@ -3949,6 +3950,24 @@ Vm.prototype.getUpvar = function () {
     }
 };
 
+Vm.prototype.setFromEnv = function () {
+    let id = this.fetchConstant();
+    let value = this.peek();
+
+    this.currentFrame.env.add(id, value);
+};
+
+Vm.prototype.getFromEnv = function () {
+    let id = this.fetchConstant();
+    let value = this.currentFrame.env.get(id);
+
+    if (value !== null) {
+        this.push(value);
+    } else {
+        this.panic(id + " is not defined");
+    }
+};
+
 Vm.prototype.callConstructor = function () {
     let numArgs = this.fetch();
 
@@ -3957,6 +3976,13 @@ Vm.prototype.callConstructor = function () {
     let callee = this.stack[idx];
     // inner function
     let fun = callee.vmFunction;
+
+    if (
+        callee.objectType !== JSObjectType.FUNCTION &&
+        callee.objectType !== JSObjectType.NATIVE
+    ) {
+        this.panic("Not a constructor.");
+    }
 
     let argumentsArray = this.setArgumentsArray(fun, idx, numArgs);
 
@@ -3984,24 +4010,6 @@ Vm.prototype.callConstructor = function () {
     }
 };
 
-Vm.prototype.setFromEnv = function () {
-    let id = this.fetchConstant();
-    let value = this.peek();
-
-    this.currentFrame.env.add(id, value);
-};
-
-Vm.prototype.getFromEnv = function () {
-    let id = this.fetchConstant();
-    let value = this.currentFrame.env.get(id);
-
-    if (value !== null) {
-        this.push(value);
-    } else {
-        this.panic(id + " is not defined");
-    }
-};
-
 Vm.prototype.callMethod = function () {
     let numArgs = this.fetch();
     let idx = this.sp - 1 - numArgs;
@@ -4010,7 +4018,11 @@ Vm.prototype.callMethod = function () {
     // inner function
     let fun = callee.vmFunction;
 
-    if (fun === undefined) {
+    if (
+        callee.objectType !== JSObjectType.FUNCTION &&
+        callee.objectType !== JSObjectType.NATIVE
+    ) {
+        console.log(callee);
         this.panic("Not a method.");
     }
     // get object from which method was called
@@ -4043,7 +4055,10 @@ Vm.prototype.callFunction = function () {
     // inner function
     let fun = callee.vmFunction;
 
-    if (fun === undefined) {
+    if (
+        callee.objectType !== JSObjectType.FUNCTION &&
+        callee.objectType !== JSObjectType.NATIVE
+    ) {
         this.panic("Not a function.");
     }
     // create and set the `arguments` array
@@ -4071,8 +4086,10 @@ Vm.prototype.setArgumentsArray = function (fun, idx, numArgs) {
     // pop off extra values
     let adjustedSp = this.sp - numArgs + fun.arity;
     // push missing args
+    let allArgsArray = Array.from(argumentsArray);
     while (numArgs < fun.arity) {
         this.push(this.runtime.JSUndefined);
+        allArgsArray.push(this.runtime.JSUndefined);
         numArgs++;
     }
     // manually set sp to where it should be
@@ -4080,7 +4097,7 @@ Vm.prototype.setArgumentsArray = function (fun, idx, numArgs) {
     // set argumentsArray as value at its reserved stack idx
     this.stack[idx - 1] = this.runtime.newArray(argumentsArray);
 
-    return argumentsArray;
+    return allArgsArray;
 };
 
 Vm.prototype.initFunctionCall = function (fun, newFp, isConstructor) {
