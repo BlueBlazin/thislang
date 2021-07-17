@@ -4069,7 +4069,14 @@ Vm.prototype.setArgumentsArray = function (fun, idx, numArgs) {
     // create an arguments array
     let argumentsArray = this.stack.slice(this.sp - numArgs, this.sp);
     // pop off extra values
-    this.sp = this.sp - numArgs + fun.arity;
+    let adjustedSp = this.sp - numArgs + fun.arity;
+    // push missing args
+    while (numArgs < fun.arity) {
+        this.push(this.runtime.JSUndefined);
+        numArgs++;
+    }
+    // manually set sp to where it should be
+    this.sp = adjustedSp;
     // set argumentsArray as value at its reserved stack idx
     this.stack[idx - 1] = this.runtime.newArray(argumentsArray);
 
