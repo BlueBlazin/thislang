@@ -2276,9 +2276,9 @@ Runtime.prototype.newFunction = function (vmFunction) {
         vmFunction
     );
 
-    let prototypeProperty = this.newEmptyObject();
-    prototypeProperty.addProperty("constructor", fun);
-    fun.addProperty("prototype", prototypeProperty);
+    let prototypeObj = this.newEmptyObject();
+    prototypeObj.addProperty("constructor", fun);
+    fun.addProperty("prototype", prototypeObj);
 
     return fun;
 };
