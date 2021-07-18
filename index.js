@@ -1986,9 +1986,7 @@ function JSObject(shape, proto) {
     this.proto = proto;
 
     // property values
-    this.mappedValues = {
-        "[[__proto__]]": this.proto,
-    };
+    this.mappedValues = {};
 }
 
 JSObject.prototype.addProperty = function (key, value, writable) {
@@ -2017,9 +2015,7 @@ function JSNumber(shape, proto, value) {
     this.proto = proto;
     this.value = value;
     this.shape = shape;
-    this.mappedValues = {
-        "[[__proto__]]": this.proto,
-    };
+    this.mappedValues = {};
 }
 
 JSNumber.prototype.addProperty = function (key, value, writable) {
@@ -2074,9 +2070,7 @@ function JSBoolean(shape, proto, value) {
     this.proto = proto;
     this.value = value;
     this.shape = shape;
-    this.mappedValues = {
-        "[[__proto__]]": this.proto,
-    };
+    this.mappedValues = {};
 }
 
 JSBoolean.prototype.addProperty = function (key, value, writable) {
@@ -2109,7 +2103,6 @@ function JSString(shape, proto, value, stringLength) {
     this.value = value;
     this.shape = shape;
     this.mappedValues = {
-        "[[__proto__]]": this.proto,
         length: stringLength,
     };
 }
