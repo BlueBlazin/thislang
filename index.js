@@ -301,6 +301,7 @@ Tokenizer.prototype.isKeyword = function (ident) {
         case "default":
         case "function":
         case "undefined":
+        case "instanceof":
             return true;
         default:
             return false;
@@ -1809,6 +1810,9 @@ let Opcodes = {
     XOR:               0x2D,
     MOD:               0x2E,
     NOT:               0x2F,
+    TYPEOF:            0x30,
+    NEGATE:            0x31,
+    INSTANCEOF:        0x32,
 };
 
 //==================================================================
@@ -2368,6 +2372,8 @@ Runtime.prototype.generateGlobalEnv = function () {
         }
     );
 
+    TLObject.addProperty("prototype", this.JSObjectPrototype);
+
     TLObject.addProperty(
         "getPrototypeOf",
         this.newNativeFunction(
@@ -2845,7 +2851,19 @@ Compiler.prototype.unaryExpr = function (ast) {
     // compile argument
     this.expression(ast.argument);
     // emit opcode
-    this.emitByte(Opcodes.NOT);
+    switch (ast.operator) {
+        case "!":
+            this.emitByte(Opcodes.NOT);
+            break;
+        case "typeof":
+            this.emitByte(Opcodes.TYPEOF);
+            break;
+        case "-":
+            this.emitByte(Opcodes.NEGATE);
+            break;
+        default:
+            this.panic("Illegal unary operator.");
+    }
 };
 
 Compiler.prototype.spreadExpr = function (ast) {
@@ -3276,6 +3294,8 @@ Compiler.prototype.binary = function (ast) {
             return this.compileArgsAndEmit(ast, Opcodes.XOR);
         case "%":
             return this.compileArgsAndEmit(ast, Opcodes.MOD);
+        case "instanceof":
+            return this.compileArgsAndEmit(ast, Opcodes.INSTANCEOF);
         default:
             this.panic("Invalid binary operator " + ast.operator);
     }
@@ -3690,6 +3710,15 @@ function dis(code, constants, name) {
             case Opcodes.NOT:
                 simpleInstr("NOT", state);
                 break;
+            case Opcodes.TYPEOF:
+                simpleInstr("TYPEOF", state);
+                break;
+            case Opcodes.NEGATE:
+                simpleInstr("NEGATE", state);
+                break;
+            case Opcodes.INSTANCEOF:
+                simpleInstr("INSTANCEOF", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3898,6 +3927,15 @@ Vm.prototype.run = function () {
             case Opcodes.NOT:
                 this.not();
                 break;
+            case Opcodes.TYPEOF:
+                this.typeOf();
+                break;
+            case Opcodes.NEGATE:
+                this.negate();
+                break;
+            case Opcodes.INSTANCEOF:
+                this.instanceOf();
+                break;
         }
     }
 };
@@ -3905,6 +3943,70 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.instanceOf = function () {
+    let object = this.pop();
+    let constructor = this.pop();
+    if (
+        constructor.objectType !== JSObjectType.FUNCTION &&
+        constructor.objectType !== JSObjectType.NATIVE &&
+        constructor.objectType !== JSObjectType.BOUND_FUNCTION
+    ) {
+        this.panic("Right-hand side of `instanceof` is not callable.");
+    }
+    let prototypeObj =
+        constructor.indexedValues[
+            constructor.shape.shapeTable["prototype"].offset
+        ];
+
+    while (object !== null && object !== undefined) {
+        if (object === prototypeObj) {
+            return this.push(this.runtime.JSTrue);
+        }
+        object = object.proto;
+    }
+    this.push(this.runtime.JSFalse);
+};
+
+Vm.prototype.negate = function () {
+    let number = this.pop();
+    // TODO: typecheck
+    this.push(this.runtime.newNumber(-number.value));
+};
+
+Vm.prototype.typeOf = function () {
+    let value = this.pop();
+    switch (value.type) {
+        case JSType.NUMBER:
+            this.push(this.runtime.newString("number"));
+            break;
+        case JSType.BOOLEAN:
+            this.push(this.runtime.newString("boolean"));
+            break;
+        case JSType.NULL:
+            this.push(this.runtime.newString("object"));
+            break;
+        case JSType.UNDEFINED:
+            this.push(this.runtime.newString("undefined"));
+            break;
+        case JSType.STRING:
+            this.push(this.runtime.newString("string"));
+            break;
+        case JSType.OBJECT:
+            switch (value.objectType) {
+                case JSObjectType.FUNCTION:
+                case JSObjectType.NATIVE:
+                case JSObjectType.BOUND_FUNCTION:
+                    this.push(this.runtime.newString("function"));
+                    break;
+                case JSObjectType.ORDINARY:
+                case JSObjectType.ARRAY:
+                    this.push(this.runtime.newString("object"));
+                    break;
+            }
+            break;
+    }
+};
 
 Vm.prototype.not = function () {
     let truthValue = this.isTruthy(this.pop());
