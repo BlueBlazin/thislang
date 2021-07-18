@@ -2253,7 +2253,7 @@ function Runtime() {
     this.JSFunctionPrototype.addProperty(
         "bind",
         this.newNativeFunction("bind", 1, function (vm, args, thisObj) {
-            if (thisObj.objectType === JSObject.NATIVE) {
+            if (thisObj.objectType === JSObjectType.NATIVE) {
                 vm.panic(
                     "Thislang does not support `bind` on native functions."
                 );
