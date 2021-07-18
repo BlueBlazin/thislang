@@ -2000,13 +2000,13 @@ JSObject.prototype.addProperty = function (key, value, writable) {
     }
 };
 
-// JSObject.prototype.equal = function (right, runtime) {
-//     return this === right ? runtime.JSTrue : runtime.JSFalse;
-// };
+JSObject.prototype.equal = function (right, runtime) {
+    return this === right ? runtime.JSTrue : runtime.JSFalse;
+};
 
-// JSObject.prototype.neq = function (right, runtime) {
-//     return this !== right ? runtime.JSTrue : runtime.JSFalse;
-// };
+JSObject.prototype.neq = function (right, runtime) {
+    return this !== right ? runtime.JSTrue : runtime.JSFalse;
+};
 
 //------------------------------------------------------------------
 // Runtime - JSNumber
@@ -2253,6 +2253,11 @@ function Runtime() {
     this.JSFunctionPrototype.addProperty(
         "bind",
         this.newNativeFunction("bind", 1, function (vm, args, thisObj) {
+            if (thisObj.objectType === JSObject.NATIVE) {
+                vm.panic(
+                    "Thislang does not support `bind` on native functions."
+                );
+            }
             let fun = thisObj.vmFunction.clone();
             fun.name = "bound " + fun.name;
             fun.boundThis = args[0];
