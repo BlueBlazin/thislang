@@ -4875,7 +4875,6 @@ Vm.prototype.pop = function () {
         let source = ace.edit("editor").getValue();
         let parser = new Parser(source);
         let ast = parser.parse();
-        console.log("Successfully parsed!");
         console.log(JSON.stringify(ast, null, "  "));
     };
 
