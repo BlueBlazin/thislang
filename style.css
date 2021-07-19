@@ -5,33 +5,12 @@
 
 #app {
   width: 100vw;
-  height: 100vh;
+  height: 100px;
   overflow: hidden;
   background-color: #333;
   display: flex;
   flex-direction: column;
-}
-
-.editor {
-  width: 100vw;
-  height: calc(100vh - 100px);
-}
-
-.editor textarea {
-  box-sizing: border-box;
-  width: 100%;
-  height: calc(100vh - 100px);
-  outline: none;
-  resize: none;
-  overflow: auto;
-  padding: 20px;
-  font-size: 14px;
-  font-family: Menlo, Monaco, 'Courier New', monospace;
-}
-
-.output {
-  width: 100vw;
-  height: 400px;
+  position: relative;
 }
 
 .btn {
@@ -42,8 +21,7 @@
   box-shadow: none;
   font-family: -webkit-body;
   border: none;
-  /* background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%); */
-  color:  white;
+  color: white;
   font-family: Helvetica;
   cursor: pointer;
   border-radius: 4px;
@@ -51,44 +29,88 @@
   margin: 0 20px;
 }
 
-/* .btn:hover {
-  background: linear-gradient(45deg, rgb(48, 107, 184) 0%, rgb(122, 78, 204) 25%, rgb(150, 55, 102) 51%, rgb(231, 136, 48) 100%);
-} */
-
 .btn:active {
   font-size: 18px;
 }
 
 #tokenize-btn {
-  background: linear-gradient(45deg, rgb(59, 227, 95) 0%, rgb(87, 161, 230) 25%, rgb(89, 68, 183) 51%, rgb(255, 53, 255) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(59, 227, 95) 0%,
+    rgb(87, 161, 230) 25%,
+    rgb(89, 68, 183) 51%,
+    rgb(255, 53, 255) 100%
+  );
 }
 
 #tokenize-btn:hover {
-  background: linear-gradient(45deg, rgb(48, 184, 89) 0%, rgb(78, 112, 204) 25%, rgb(150, 55, 145) 51%, rgb(231, 48, 63) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(48, 184, 89) 0%,
+    rgb(78, 112, 204) 25%,
+    rgb(150, 55, 145) 51%,
+    rgb(231, 48, 63) 100%
+  );
 }
 
 #parse-btn {
-  background: linear-gradient(45deg, rgb(59,173,227) 0%, rgb(87,111,230) 25%, rgb(152,68,183) 51%, rgb(255,53,127) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(59, 173, 227) 0%,
+    rgb(87, 111, 230) 25%,
+    rgb(152, 68, 183) 51%,
+    rgb(255, 53, 127) 100%
+  );
 }
 
 #parse-btn:hover {
-  background: linear-gradient(45deg, rgb(48, 107, 184) 0%, rgb(122, 78, 204) 25%, rgb(150, 55, 102) 51%, rgb(231, 136, 48) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(48, 107, 184) 0%,
+    rgb(122, 78, 204) 25%,
+    rgb(150, 55, 102) 51%,
+    rgb(231, 136, 48) 100%
+  );
 }
 
 #compile-btn {
-  background: linear-gradient(45deg, rgb(227, 59, 143) 0%, rgb(230, 87, 106) 25%, rgb(183, 120, 68) 51%, rgb(225, 255, 53) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(227, 59, 143) 0%,
+    rgb(230, 87, 106) 25%,
+    rgb(183, 120, 68) 51%,
+    rgb(225, 255, 53) 100%
+  );
 }
 
 #compile-btn:hover {
-  background: linear-gradient(45deg, rgb(194, 51, 51) 0%, rgb(201, 136, 76) 25%, rgb(158, 183, 68) 51%, rgb(46, 228, 107) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(194, 51, 51) 0%,
+    rgb(201, 136, 76) 25%,
+    rgb(158, 183, 68) 51%,
+    rgb(46, 228, 107) 100%
+  );
 }
 
 #run-btn {
-  background: linear-gradient(45deg, rgb(126, 227, 59) 0%, rgb(87, 230, 135) 25%, rgb(68, 160, 183) 51%, rgb(83, 53, 255) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(126, 227, 59) 0%,
+    rgb(87, 230, 135) 25%,
+    rgb(68, 160, 183) 51%,
+    rgb(83, 53, 255) 100%
+  );
 }
 
 #run-btn:hover {
-  background: linear-gradient(45deg, rgb(53, 202, 85) 0%, rgb(75, 193, 197) 25%, rgb(99, 68, 183) 51%, rgb(191, 49, 235) 100%);
+  background: linear-gradient(
+    45deg,
+    rgb(53, 202, 85) 0%,
+    rgb(75, 193, 197) 25%,
+    rgb(99, 68, 183) 51%,
+    rgb(191, 49, 235) 100%
+  );
 }
 
 .controls {
@@ -96,4 +118,14 @@
   height: 100px;
   display: flex;
   align-items: center;
+}
+
+/******************* Editor *********************/
+#editor {
+  position: absolute;
+  top: 100px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: calc(100vh - 100px);
 }

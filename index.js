@@ -2347,6 +2347,14 @@ Runtime.prototype.generateGlobalEnv = function () {
         })
     );
 
+    TLConsole.addProperty(
+        "error",
+        this.newNativeFunction("error", 0, function (vm, args, thisObj) {
+            console.error(...args.map(toString));
+            return vm.runtime.JSUndefined;
+        })
+    );
+
     env.add("console", TLConsole);
 
     env.add(
@@ -2422,8 +2430,33 @@ Runtime.prototype.generateGlobalEnv = function () {
 
     env.add("Object", TLObject);
     //--------------------------------------------------
+    // Number
+    //--------------------------------------------------
+    let TLNumber = this.newNativeFunction(
+        "Number",
+        0,
+        function (vm, args, thisObj) {
+            if (args.length === 0) {
+                return vm.runtime.newNumber(0);
+            } else {
+                return vm.runtime.newNumber(Number(args[0].value));
+            }
+        }
+    );
+
+    env.add("Number", TLNumber);
+    //--------------------------------------------------
     // Boolean
     //--------------------------------------------------
+    let TLBoolean = this.newNativeFunction(
+        "Boolean",
+        1,
+        function (vm, args, thisObj) {
+            return vm.isTruthy(args[0]);
+        }
+    );
+
+    env.add("Boolean", TLBoolean);
     //--------------------------------------------------
     // Array
     //--------------------------------------------------
@@ -4826,10 +4859,9 @@ Vm.prototype.pop = function () {
     let parseBtn = document.getElementById("parse-btn");
     let compileBtn = document.getElementById("compile-btn");
     let runBtn = document.getElementById("run-btn");
-    let textArea = document.getElementById("source-code");
 
     tokenizeBtn.onclick = function () {
-        let source = textArea.value;
+        let source = ace.edit("editor").getValue();
         let tokenizer = new Tokenizer(source);
 
         let token;
@@ -4843,7 +4875,7 @@ Vm.prototype.pop = function () {
     };
 
     parseBtn.onclick = function () {
-        let source = textArea.value;
+        let source = ace.edit("editor").getValue();
         let parser = new Parser(source);
         let ast = parser.parse();
         console.log("Successfully parsed!");
@@ -4851,7 +4883,7 @@ Vm.prototype.pop = function () {
     };
 
     compileBtn.onclick = function () {
-        let source = textArea.value;
+        let source = ace.edit("editor").getValue();
 
         let parser = new Parser(source);
         let ast = parser.parse();
@@ -4865,7 +4897,7 @@ Vm.prototype.pop = function () {
     };
 
     runBtn.onclick = function () {
-        let source = textArea.value;
+        let source = ace.edit("editor").getValue();
 
         let parser = new Parser(source);
         let ast = parser.parse();
