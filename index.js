@@ -456,6 +456,7 @@ let AstType = {
     SEQUENCE_EXPR: "SEQUENCE_EXPR",
     ASSIGNMENT_EXPR: "ASSIGNMENT_EXPR",
     EXPRESSION_STMT: "EXPRESSION_STMT",
+    EMPTY_STMT: "EMPTY_STMT",
     BLOCK_STMT: "BLOCK_STMT",
     CONTINUE_STMT: "CONTINUE_STMT",
     BREAK_STMT: "BREAK_STMT",
@@ -508,6 +509,8 @@ Parser.prototype.statementOrDeclaration = function () {
         switch (token.value) {
             case "{":
                 return this.blockStmt();
+            case ";":
+                return this.emptyStmt();
             default:
                 return this.expressionStmt();
         }
@@ -544,6 +547,8 @@ Parser.prototype.statement = function () {
         switch (token.value) {
             case "{":
                 return this.blockStmt();
+            case ";":
+                return this.emptyStmt();
             default:
                 return this.expressionStmt();
         }
@@ -573,6 +578,11 @@ Parser.prototype.statement = function () {
     }
 
     return this.expressionStmt();
+};
+
+Parser.prototype.emptyStmt = function () {
+    this.expectSemicolon();
+    return { type: AstType.EMPTY_STMT, line: this.line };
 };
 
 Parser.prototype.blockStmt = function () {
@@ -2597,6 +2607,7 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.WHILE_STMT:
         case AstType.RETURN_STMT:
         case AstType.BREAK_STMT:
+        case AstType.EMPTY_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -2632,6 +2643,8 @@ Compiler.prototype.statement = function (ast) {
             return this.returnStmt(ast);
         case AstType.BREAK_STMT:
             return this.breakStmt(ast);
+        case AstType.EMPTY_STMT:
+            break;
         default:
             this.panic(ast.type);
     }
