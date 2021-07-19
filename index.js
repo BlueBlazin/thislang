@@ -4429,7 +4429,6 @@ Vm.prototype.cmpNeq = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    // TODO: do it properly for different types
     this.push(lhs.neq(rhs));
 };
 
@@ -4437,7 +4436,6 @@ Vm.prototype.cmpGt = function (strict) {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    // TODO: do it properly for different types
     if (strict) {
         this.push(lhs.gt(rhs, this.runtime));
     } else {
@@ -4449,7 +4447,6 @@ Vm.prototype.cmpLt = function (strict) {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    // TODO: do it properly for different types
     if (strict) {
         this.push(lhs.lt(rhs, this.runtime));
     } else {

@@ -13,7 +13,7 @@
   position: relative;
 }
 
-.btn {
+/* .btn {
   height: 50px;
   width: 150px;
   font-size: 20px;
@@ -27,13 +27,69 @@
   border-radius: 4px;
   transition: all 500ms smooth;
   margin: 0 20px;
+} */
+
+/* .btn:active {
+  font-size: 18px;
+} */
+
+.logo {
+  width: 60px;
+  height: 60px;
+  margin: 0 20px;
+}
+
+.btn {
+  height: 45px;
+  width: 115px;
+  font-size: 15px;
+  outline: transparent;
+  box-shadow: none;
+  border: none;
+  color: #222;
+  font-family: Helvetica;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 0 20px;
+  background-color: rgb(218, 218, 218);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 100ms;
+}
+
+.btn:hover {
+  background-color: #bbb;
 }
 
 .btn:active {
-  font-size: 18px;
+  background-color: #aaa;
 }
 
-#tokenize-btn {
+.btn-icon {
+  width: 25px;
+  height: 25px;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  margin-right: 10px;
+}
+
+.editor-container {
+  display: flex;
+  overflow: hidden;
+}
+
+/* #console {
+  width: 500px;
+  height: calc(100vh - 100px);
+  background-color: #eee;
+  border-top: 16px solid #202020;
+  border-left: 5px solid #202020;
+  box-sizing: border-box;
+} */
+
+/* #tokenize-btn {
   background: linear-gradient(
     45deg,
     rgb(59, 227, 95) 0%,
@@ -111,7 +167,7 @@
     rgb(99, 68, 183) 51%,
     rgb(191, 49, 235) 100%
   );
-}
+} */
 
 .controls {
   width: 100vw;
@@ -122,10 +178,12 @@
 
 /******************* Editor *********************/
 #editor {
-  position: absolute;
-  top: 100px;
+  position: relative;
+  top: 0;
   right: 0;
   bottom: 0;
   left: 0;
   height: calc(100vh - 100px);
+  /* width: calc(100vw - 500px); */
+  width: 100vw;
 }

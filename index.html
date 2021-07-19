@@ -10,14 +10,30 @@
   <body>
     <div id="app">
       <div class="controls">
-        <button id="tokenize-btn" class="btn">Tokenize</button>
-        <button id="parse-btn" class="btn">Parse</button>
-        <button id="compile-btn" class="btn">Compile</button>
-        <button id="run-btn" class="btn">Run</button>
+        <img class="logo" src="./thislang-logo.png" alt="Thislang Logo" />
+        <button id="tokenize-btn" class="btn">
+          <div class="btn-icon" style="background-image: url(./abc.svg)"></div>
+          Tokenize
+        </button>
+        <button id="parse-btn" class="btn">
+          <div class="btn-icon" style="background-image: url(./tree.svg)"></div>
+          Parse
+        </button>
+        <button id="compile-btn" class="btn">
+          <div class="btn-icon" style="background-image: url(./gear.svg)"></div>
+          Compile
+        </button>
+        <button id="run-btn" class="btn">
+          <div class="btn-icon" style="background-image: url(./play.svg)"></div>
+          Run
+        </button>
       </div>
     </div>
 
-    <div id="editor"></div>
+    <div class="editor-container">
+      <div id="editor"></div>
+      <div id="console"></div>
+    </div>
 
     <script
       src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"
