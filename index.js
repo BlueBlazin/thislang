@@ -3954,6 +3954,7 @@ Vm.prototype.instanceOf = function () {
     ) {
         this.panic("Right-hand side of `instanceof` is not callable.");
     }
+
     let prototypeObj =
         constructor.indexedValues[
             constructor.shape.shapeTable["prototype"].offset
@@ -4755,7 +4756,7 @@ Vm.prototype.isTruthy = function (value) {
     } else if (value.type === JSType.BOOLEAN) {
         return value.value;
     } else {
-        return true;
+        return value.type !== JSType.NULL && value.type !== JSType.UNDEFINED;
     }
 };
 
