@@ -2438,6 +2438,22 @@ Runtime.prototype.generateGlobalEnv = function () {
         })
     );
 
+    TLObject.addProperty(
+        "create",
+        this.newNativeFunction("create", 1, function (vm, args, thisObj) {
+            let newObj = vm.runtime.newEmptyObject();
+            let proto = args[0];
+            if (proto.type !== JSType.OBJECT && proto.type !== JSType.NULL) {
+                vm.panic(
+                    "Object prototype may only be an Object or null: " +
+                        toString(proto)
+                );
+            }
+            newObj.proto = args[0];
+            return newObj;
+        })
+    );
+
     env.add("Object", TLObject);
     //--------------------------------------------------
     // Number

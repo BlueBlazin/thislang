@@ -13,26 +13,6 @@
   position: relative;
 }
 
-/* .btn {
-  height: 50px;
-  width: 150px;
-  font-size: 20px;
-  outline: transparent;
-  box-shadow: none;
-  font-family: -webkit-body;
-  border: none;
-  color: white;
-  font-family: Helvetica;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: all 500ms smooth;
-  margin: 0 20px;
-} */
-
-/* .btn:active {
-  font-size: 18px;
-} */
-
 .logo {
   width: 60px;
   height: 60px;
@@ -40,7 +20,7 @@
 }
 
 .btn {
-  height: 45px;
+  height: 40px;
   width: 115px;
   font-size: 15px;
   outline: transparent;
@@ -80,95 +60,6 @@
   overflow: hidden;
 }
 
-/* #console {
-  width: 500px;
-  height: calc(100vh - 100px);
-  background-color: #eee;
-  border-top: 16px solid #202020;
-  border-left: 5px solid #202020;
-  box-sizing: border-box;
-} */
-
-/* #tokenize-btn {
-  background: linear-gradient(
-    45deg,
-    rgb(59, 227, 95) 0%,
-    rgb(87, 161, 230) 25%,
-    rgb(89, 68, 183) 51%,
-    rgb(255, 53, 255) 100%
-  );
-}
-
-#tokenize-btn:hover {
-  background: linear-gradient(
-    45deg,
-    rgb(48, 184, 89) 0%,
-    rgb(78, 112, 204) 25%,
-    rgb(150, 55, 145) 51%,
-    rgb(231, 48, 63) 100%
-  );
-}
-
-#parse-btn {
-  background: linear-gradient(
-    45deg,
-    rgb(59, 173, 227) 0%,
-    rgb(87, 111, 230) 25%,
-    rgb(152, 68, 183) 51%,
-    rgb(255, 53, 127) 100%
-  );
-}
-
-#parse-btn:hover {
-  background: linear-gradient(
-    45deg,
-    rgb(48, 107, 184) 0%,
-    rgb(122, 78, 204) 25%,
-    rgb(150, 55, 102) 51%,
-    rgb(231, 136, 48) 100%
-  );
-}
-
-#compile-btn {
-  background: linear-gradient(
-    45deg,
-    rgb(227, 59, 143) 0%,
-    rgb(230, 87, 106) 25%,
-    rgb(183, 120, 68) 51%,
-    rgb(225, 255, 53) 100%
-  );
-}
-
-#compile-btn:hover {
-  background: linear-gradient(
-    45deg,
-    rgb(194, 51, 51) 0%,
-    rgb(201, 136, 76) 25%,
-    rgb(158, 183, 68) 51%,
-    rgb(46, 228, 107) 100%
-  );
-}
-
-#run-btn {
-  background: linear-gradient(
-    45deg,
-    rgb(126, 227, 59) 0%,
-    rgb(87, 230, 135) 25%,
-    rgb(68, 160, 183) 51%,
-    rgb(83, 53, 255) 100%
-  );
-}
-
-#run-btn:hover {
-  background: linear-gradient(
-    45deg,
-    rgb(53, 202, 85) 0%,
-    rgb(75, 193, 197) 25%,
-    rgb(99, 68, 183) 51%,
-    rgb(191, 49, 235) 100%
-  );
-} */
-
 .controls {
   width: 100vw;
   height: 100px;
@@ -176,7 +67,6 @@
   align-items: center;
 }
 
-/******************* Editor *********************/
 #editor {
   position: relative;
   top: 0;
@@ -184,6 +74,5 @@
   bottom: 0;
   left: 0;
   height: calc(100vh - 100px);
-  /* width: calc(100vw - 500px); */
   width: 100vw;
 }
