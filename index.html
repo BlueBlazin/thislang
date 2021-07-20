@@ -30,7 +30,7 @@
       </div>
     </div>
 
-    <div class="editor-container">
+    <div class="code-container">
       <div id="editor"></div>
       <div id="console"></div>
     </div>
@@ -44,6 +44,7 @@
     <script>
       const editor = ace.edit("editor");
       editor.setTheme("ace/theme/monokai");
+      editor.setOption("wrap", true);
       editor.session.setMode("ace/mode/javascript");
     </script>
 

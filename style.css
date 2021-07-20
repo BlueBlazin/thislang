@@ -55,11 +55,6 @@
   margin-right: 10px;
 }
 
-.editor-container {
-  display: flex;
-  overflow: hidden;
-}
-
 .controls {
   width: 100vw;
   height: 100px;
@@ -67,12 +62,21 @@
   align-items: center;
 }
 
-#editor {
-  position: relative;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: calc(100vh - 100px);
+.code-container {
+  display: flex;
   width: 100vw;
 }
+
+#editor {
+  width: calc(100vw - 450px);
+  width: 100vw;
+  height: calc(100vh - 100px);
+}
+
+/* #console {
+  height: calc(100vh - 100px);
+  width: 450px;
+  background-color: #eee;
+  padding: 20px;
+  box-sizing: border-box;
+} */
