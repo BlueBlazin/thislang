@@ -101,6 +101,7 @@ Tokenizer.prototype.scanPunctuator = function () {
         case ",":
         case ":":
         case "~":
+        case "?":
             return this.token(TokenType.PUNCTUATOR, c);
         case "+":
             if (this.matches("+")) {
@@ -2982,9 +2983,28 @@ Compiler.prototype.expression = function (ast) {
             return this.spreadExpr(ast);
         case AstType.UNARY_EXPR:
             return this.unaryExpr(ast);
+        case AstType.CONDITIONAL_EXPR:
+            return this.conditionalExpr(ast);
         default:
             this.panic("in expression");
     }
+};
+
+Compiler.prototype.conditionalExpr = function (ast) {
+    // compile test
+    this.expression(ast.test);
+    // emit else jump (jump if test fails)
+    let elseIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
+    // compile consequent
+    this.expression(ast.consequent);
+    // emit jump (skip else branch if test had succeeded)
+    let jumpIdx = this.emitJump(Opcodes.JUMP);
+    // patch else jump
+    this.patchJump(elseIdx);
+    // compile alternative
+    this.expression(ast.alternate);
+    // patch jump
+    this.patchJump(jumpIdx);
 };
 
 Compiler.prototype.unaryExpr = function (ast) {
