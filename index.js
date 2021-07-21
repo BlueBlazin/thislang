@@ -2669,6 +2669,7 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.EMPTY_STMT:
         case AstType.TRY_STMT:
         case AstType.THROW_STMT:
+        case AstType.FOR_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -2710,9 +2711,37 @@ Compiler.prototype.statement = function (ast) {
             return this.tryStmt(ast);
         case AstType.THROW_STMT:
             return this.throwStmt(ast);
+        case AstType.FOR_STMT:
+            this.beginScope();
+            this.forStmt(ast);
+            this.endScope();
+            return;
         default:
             this.panic(ast.type);
     }
+};
+
+Compiler.prototype.forStmt = function (ast) {
+    // start a new breaks stack
+    this.breaksStack.push([]);
+    // compile initializer
+    this.stmtOrDclr(ast.init);
+    // record next position for looping
+    let loopStart = this.function.code.length;
+    // compile test
+    this.expression(ast.test);
+    // jump if not equal
+    let jumpIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
+    // compile body
+    this.statement(ast.body);
+    // compile update
+    this.expression(ast.update);
+    // loop back
+    this.emitLoop(loopStart);
+    // patch jump
+    this.patchJump(jumpIdx);
+    // patch breaks
+    this.patchBreaks();
 };
 
 Compiler.prototype.throwStmt = function (ast) {
@@ -2778,8 +2807,7 @@ Compiler.prototype.whileStmt = function (ast) {
     let loopStart = this.function.code.length;
     // compile test
     this.expression(ast.test);
-    // duplicate and jump if not equal
-    // this.emitByte(Opcodes.DUPLICATE);
+    // jump if not equal
     let jumpIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
     // compile body
     this.statement(ast.body);
