@@ -289,10 +289,13 @@ Tokenizer.prototype.isKeyword = function (ident) {
         case "for":
         case "new":
         case "let":
+        case "try":
         case "case":
         case "else":
         case "this":
         case "break":
+        case "catch":
+        case "throw":
         case "while":
         case "return":
         case "switch":
@@ -466,6 +469,8 @@ let AstType = {
     WHILE_STMT: "WHILE_STMT",
     SWITCH_STMT: "SWITCH_STMT",
     THROW_STMT: "THROW_STMT",
+    TRY_STMT: "TRY_STMT",
+    CATCH_CLAUSE: "CATCH_CLAUSE",
     LET_DCLR: "LET_DCLR",
     FUNCTION_DCLR: "FUNCTION_DCLR",
     SCRIPT: "SCRIPT",
@@ -530,6 +535,7 @@ Parser.prototype.statementOrDeclaration = function () {
             case "break":
             case "return":
             case "throw":
+            case "try":
                 return this.statement();
             default:
                 return this.expressionStmt();
@@ -572,12 +578,45 @@ Parser.prototype.statement = function () {
                 return this.returnStmt();
             case "throw":
                 return this.throwStmt();
+            case "try":
+                return this.tryStmt();
             default:
                 return this.expressionStmt();
         }
     }
 
     return this.expressionStmt();
+};
+
+Parser.prototype.tryStmt = function () {
+    // consume `try`
+    let line = this.advance().line;
+    let block = this.blockStmt();
+    let handler = this.catchClause();
+
+    return {
+        type: AstType.TRY_STMT,
+        block: block,
+        handler: handler,
+        line: line,
+    };
+};
+
+Parser.prototype.catchClause = function () {
+    let line = this.expect(TokenType.KEYWORD, "catch").line;
+
+    this.expect(TokenType.PUNCTUATOR, "(");
+    let param = this.identifier();
+    this.expect(TokenType.PUNCTUATOR, ")");
+
+    let block = this.blockStmt();
+
+    return {
+        type: AstType.CATCH_CLAUSE,
+        param: param,
+        block: block,
+        line: line,
+    };
 };
 
 Parser.prototype.emptyStmt = function () {
@@ -1823,6 +1862,9 @@ let Opcodes = {
     TYPEOF:            0x30,
     NEGATE:            0x31,
     INSTANCEOF:        0x32,
+    PUSH_TRY_CATCH:    0x33,
+    POP_TRY_CATCH:     0x34,
+    THROW:             0x35,
 };
 
 //==================================================================
@@ -2624,6 +2666,8 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.RETURN_STMT:
         case AstType.BREAK_STMT:
         case AstType.EMPTY_STMT:
+        case AstType.TRY_STMT:
+        case AstType.THROW_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -2658,15 +2702,49 @@ Compiler.prototype.statement = function (ast) {
         case AstType.RETURN_STMT:
             return this.returnStmt(ast);
         case AstType.BREAK_STMT:
-            return this.breakStmt(ast);
+            return this.breakStmt();
         case AstType.EMPTY_STMT:
             break;
+        case AstType.TRY_STMT:
+            return this.tryStmt(ast);
+        case AstType.THROW_STMT:
+            return this.throwStmt(ast);
         default:
             this.panic(ast.type);
     }
 };
 
-Compiler.prototype.breakStmt = function (ast) {
+Compiler.prototype.throwStmt = function (ast) {
+    // compile argument and emit opcode
+    this.expression(ast.argument);
+    this.emitByte(Opcodes.THROW);
+};
+
+Compiler.prototype.tryStmt = function (ast) {
+    // push try-catch sentinel
+    let catchIdx = this.emitJump(Opcodes.PUSH_TRY_CATCH);
+    // compile try block
+    this.statement(ast.block);
+    // pop sentinel
+    this.emitByte(Opcodes.POP_TRY_CATCH);
+    // skip catch if no error was thrown
+    let jumpIdx = this.emitJump(Opcodes.JUMP);
+    // begin catch block scope
+    this.beginScope();
+    // register catch param
+    this.declareLocal(ast.handler.param.value);
+    this.markReady();
+    // patch catch jump
+    this.patchJump(catchIdx);
+    // compile catch block
+    this.blockStmt(ast.handler.block);
+    // end catch block scope
+    this.endScope();
+    // patch jump
+    this.patchJump(jumpIdx);
+};
+
+Compiler.prototype.breakStmt = function () {
     let breakIdx = this.emitJump(Opcodes.JUMP);
     this.breaksStack[this.breaksStack.length - 1].push(breakIdx);
 };
@@ -3781,6 +3859,15 @@ function dis(code, constants, name) {
             case Opcodes.INSTANCEOF:
                 simpleInstr("INSTANCEOF", state);
                 break;
+            case Opcodes.PUSH_TRY_CATCH:
+                jumpInstr("PUSH_TRY_CATCH", code, state);
+                break;
+            case Opcodes.POP_TRY_CATCH:
+                simpleInstr("POP_TRY_CATCH", state);
+                break;
+            case Opcodes.THROW:
+                simpleInstr("THROW", state);
+                break;
             default:
                 throw Error("Unknown opcode");
         }
@@ -3811,6 +3898,8 @@ function CallFrame(fun, fp, outerEnv, isConstructor) {
     this.env = new Env(outerEnv);
     // new call
     this.isConstructor = isConstructor;
+    // try stack
+    this.tryStack = [];
 }
 
 function Vm(fun, runtime) {
@@ -3998,6 +4087,15 @@ Vm.prototype.run = function () {
             case Opcodes.INSTANCEOF:
                 this.instanceOf();
                 break;
+            case Opcodes.PUSH_TRY_CATCH:
+                this.pushTryCatch();
+                break;
+            case Opcodes.POP_TRY_CATCH:
+                this.popTryCatch();
+                break;
+            case Opcodes.THROW:
+                this.throw();
+                break;
         }
     }
 };
@@ -4005,6 +4103,45 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.throw = function () {
+    let trace = [];
+    // pop throw value
+    let value = this.pop();
+
+    while (true) {
+        if (this.currentFrame.tryStack.length > 0) {
+            let tryMeta = this.currentFrame.tryStack.pop();
+            // clean the stack
+            this.sp = tryMeta.sp;
+            // push error value
+            this.push(value);
+            // jump to the catch
+            this.currentFrame.ip = tryMeta.ip;
+            return;
+        }
+
+        trace.push(this.currentFun.name);
+        if (this.frames.length > 1) {
+            this.popFrame();
+        } else {
+            break;
+        }
+    }
+
+    this.stackTrace(value, trace);
+};
+
+Vm.prototype.popTryCatch = function () {
+    this.currentFrame.tryStack.pop();
+};
+
+Vm.prototype.pushTryCatch = function () {
+    let jump = (this.fetch() << 8) | this.fetch();
+    let catchIp = this.currentFrame.ip + jump;
+
+    this.currentFrame.tryStack.push({ ip: catchIp, sp: this.sp });
+};
 
 Vm.prototype.instanceOf = function () {
     let object = this.pop();
@@ -4385,24 +4522,36 @@ Vm.prototype.initFunctionCall = function (fun, newFp, isConstructor) {
     this.currentFrame = frame;
 };
 
+// Vm.prototype.return = function () {
+//     let returnValue = this.pop();
+
+//     let poppedFrame = this.frames.pop();
+
+//     if (poppedFrame.isConstructor) {
+//         // replace returnValue with the special `this` supplied to constructors
+//         returnValue = this.stack[poppedFrame.fp + 1];
+//     }
+
+//     // update currentFrame and currentFun
+//     let frame = this.frames[this.frames.length - 1];
+//     this.currentFrame = frame;
+//     this.currentFun = frame.fun;
+
+//     this.closeUpvars(poppedFrame.fp);
+
+//     this.sp = poppedFrame.fp;
+//     this.push(returnValue);
+// };
+
 Vm.prototype.return = function () {
     let returnValue = this.pop();
-
-    let poppedFrame = this.frames.pop();
+    let poppedFrame = this.popFrame();
 
     if (poppedFrame.isConstructor) {
         // replace returnValue with the special `this` supplied to constructors
         returnValue = this.stack[poppedFrame.fp + 1];
     }
 
-    // update currentFrame and currentFun
-    let frame = this.frames[this.frames.length - 1];
-    this.currentFrame = frame;
-    this.currentFun = frame.fun;
-
-    this.closeUpvars(poppedFrame.fp);
-
-    this.sp = poppedFrame.fp;
     this.push(returnValue);
 };
 
@@ -4807,6 +4956,20 @@ Vm.prototype.pushConstant = function () {
 // VM - utils
 //------------------------------------------------------------------
 
+Vm.prototype.popFrame = function () {
+    let poppedFrame = this.frames.pop();
+    // update currentFrame and currentFun
+    let frame = this.frames[this.frames.length - 1];
+    this.currentFrame = frame;
+    this.currentFun = frame.fun;
+    // close popped functions upvars
+    this.closeUpvars(poppedFrame.fp);
+    // reset sp
+    this.sp = poppedFrame.fp;
+
+    return poppedFrame;
+};
+
 Vm.prototype.isTruthy = function (value) {
     if (value.type === JSType.STRING) {
         return value.value !== "";
@@ -4835,15 +4998,25 @@ Vm.prototype.fetch = function () {
     return this.currentFun.code[this.currentFrame.ip++];
 };
 
-Vm.prototype.stackTrace = function () {
+Vm.prototype.panicTrace = function () {
     while (this.frames.length > 0) {
         console.error("at " + this.frames.pop().fun.name);
     }
 };
 
+Vm.prototype.stackTrace = function (value, trace) {
+    let lines = [toString(value)];
+
+    for (let i = 0; i < trace.length; i++) {
+        lines.push("    at: " + trace[i]);
+    }
+
+    throw lines.join("\n");
+};
+
 /** Panic */
 Vm.prototype.panic = function (msg) {
-    this.stackTrace();
+    this.panicTrace();
     throw Error(msg);
 };
 
