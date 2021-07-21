@@ -30,8 +30,10 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
 - `switch` statements
 - Single and multi line comments
 - The `this` context
-- Ability to `bind` functions.
+- Ability to `bind` functions
 - Closures
+- Throw statements
+- Try-catch blocks
 
 ## Implementation
 
