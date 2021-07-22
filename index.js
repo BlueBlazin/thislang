@@ -2375,7 +2375,20 @@ Runtime.prototype.newArray = function (elements) {
         "push",
         this.newNativeFunction("push", 1, function (vm, args, thisObj) {
             thisObj.elements.push(args[0]);
-            thisObj.indexedValues[0]++;
+            thisObj.indexedValues[0] = vm.runtime.newNumber(
+                thisObj.indexedValues[0].value + 1
+            );
+            return thisObj;
+        })
+    );
+
+    array.addProperty(
+        "pop",
+        this.newNativeFunction("pop", 0, function (vm, args, thisObj) {
+            thisObj.elements.pop();
+            thisObj.indexedValues[0] = vm.runtime.newNumber(
+                thisObj.indexedValues[0].value - 1
+            );
             return thisObj;
         })
     );
