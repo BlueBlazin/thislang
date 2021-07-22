@@ -2368,7 +2368,17 @@ Runtime.prototype.newArray = function (elements) {
         elements
     );
 
+    // INVARIANT: "length" must always be at index 0 of indexedValues
     array.addProperty("length", this.newNumber(elements.length), true);
+
+    array.addProperty(
+        "push",
+        this.newNativeFunction("push", 1, function (vm, args, thisObj) {
+            thisObj.elements.push(args[0]);
+            thisObj.indexedValues[0]++;
+            return thisObj;
+        })
+    );
 
     array.addProperty(
         "map",
