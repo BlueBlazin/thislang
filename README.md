@@ -44,6 +44,17 @@ Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happ
 3. **Compilation:** The AST gets walked and compiled to bytecode.
 4. **Execution:** The bytecode is executed by the VM.
 
+## Goals:
+
+- Self-hosting Javascript implementation
+- All features listed above
+- Builtins supporting the most common methods (Object.create, array.map, etc.)
+
+## Non-goals:
+
+- Speed
+- Spec-compliance
+
 ## Background
 
 For a while after first learning Javascript, I struggled with understanding/remembering how `this` worked in JS. A couple years ago I thoguht why not rewrite javascript (or rather a subset of it) to get a better understanding of `this`.

@@ -2647,6 +2647,8 @@ function Compiler(runtime) {
     this.anonCount = 0;
     // breaks stack
     this.breaksStack = [];
+    // continue stack
+    this.continueStack = [];
 }
 
 Compiler.prototype.compile = function (ast) {
@@ -2670,6 +2672,7 @@ Compiler.prototype.stmtOrDclr = function (ast) {
         case AstType.TRY_STMT:
         case AstType.THROW_STMT:
         case AstType.FOR_STMT:
+        case AstType.CONTINUE_STMT:
             return this.statement(ast);
         case AstType.LET_DCLR:
             return this.letDclr(ast);
@@ -2716,14 +2719,24 @@ Compiler.prototype.statement = function (ast) {
             this.forStmt(ast);
             this.endScope();
             return;
+        case AstType.CONTINUE_STMT:
+            return this.continueStmt();
         default:
             this.panic(ast.type);
     }
 };
 
+Compiler.prototype.continueStmt = function () {
+    let jumpIdx = this.emitJump(Opcodes.JUMP);
+    // store jumpIdx in the last slot (replacing the placeholder)
+    this.continueStack[this.continueStack.length - 1] = jumpIdx;
+};
+
 Compiler.prototype.forStmt = function (ast) {
     // start a new breaks stack
     this.breaksStack.push([]);
+    // push placeholder on continue stack
+    this.continueStack.push(null);
     // compile initializer
     this.stmtOrDclr(ast.init);
     // record next position for looping
@@ -2734,6 +2747,8 @@ Compiler.prototype.forStmt = function (ast) {
     let jumpIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
     // compile body
     this.statement(ast.body);
+    // patch continue (if any)
+    this.patchContinue();
     // compile update
     this.expression(ast.update);
     // loop back
@@ -2803,6 +2818,8 @@ Compiler.prototype.functionDclr = function (ast) {
 Compiler.prototype.whileStmt = function (ast) {
     // start a new breaks stack
     this.breaksStack.push([]);
+    // push placeholder on continue stack
+    this.continueStack.push(null);
     // record next position for looping
     let loopStart = this.function.code.length;
     // compile test
@@ -2811,6 +2828,8 @@ Compiler.prototype.whileStmt = function (ast) {
     let jumpIdx = this.emitJump(Opcodes.JUMP_IF_FALSE);
     // compile body
     this.statement(ast.body);
+    // patch continue (if any)
+    this.patchContinue();
     // loop back
     this.emitLoop(loopStart);
     // patch jump
@@ -3549,6 +3568,13 @@ Compiler.prototype.string = function (ast) {
 //------------------------------------------------------------------
 // Compiler - utils
 //------------------------------------------------------------------
+
+Compiler.prototype.patchContinue = function () {
+    let continueIdx;
+    if ((continueIdx = this.continueStack.pop()) !== null) {
+        this.patchJump(continueIdx);
+    }
+};
 
 Compiler.prototype.patchBreaks = function () {
     let breaks = this.breaksStack.pop();
