@@ -2369,6 +2369,7 @@ Runtime.prototype.newArray = function (elements) {
     );
 
     // INVARIANT: "length" must always be at index 0 of indexedValues
+    // for JSArrays
     array.addProperty("length", this.newNumber(elements.length), true);
 
     array.addProperty(
@@ -2600,9 +2601,39 @@ Runtime.prototype.generateGlobalEnv = function () {
     //--------------------------------------------------
     // Array
     //--------------------------------------------------
+    let TLArray = this.newNativeFunction(
+        "Array",
+        0,
+        function (vm, args, thisObj) {
+            return vm.runtime.newArray(args);
+        }
+    );
+
+    TLArray.addProperty(
+        "from",
+        this.newNativeFunction("from", 1, function (vm, args, thisObj) {
+            if (args[0].objectType !== JSObjectType.ARRAY) {
+                vm.panic(
+                    "Argument to Array.from has to be another array in thislang."
+                );
+            }
+            return vm.runtime.newArray(Array.from(args[0].elements));
+        })
+    );
+
+    env.add("Array", TLArray);
     //--------------------------------------------------
     // String
     //--------------------------------------------------
+    let TLString = this.newNativeFunction("String", 0, function (vm, args, thisObj) {
+        if (args.length === 0) {
+            return vm.runtime.newString("");
+        } else {
+            return vm.runtime.newString(toString(args[0]));
+        }
+    });
+
+    env.add("String", TLString);
 
     return env;
 };
