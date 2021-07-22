@@ -4596,27 +4596,6 @@ Vm.prototype.initFunctionCall = function (fun, newFp, isConstructor) {
     this.currentFrame = frame;
 };
 
-// Vm.prototype.return = function () {
-//     let returnValue = this.pop();
-
-//     let poppedFrame = this.frames.pop();
-
-//     if (poppedFrame.isConstructor) {
-//         // replace returnValue with the special `this` supplied to constructors
-//         returnValue = this.stack[poppedFrame.fp + 1];
-//     }
-
-//     // update currentFrame and currentFun
-//     let frame = this.frames[this.frames.length - 1];
-//     this.currentFrame = frame;
-//     this.currentFun = frame.fun;
-
-//     this.closeUpvars(poppedFrame.fp);
-
-//     this.sp = poppedFrame.fp;
-//     this.push(returnValue);
-// };
-
 Vm.prototype.return = function () {
     let returnValue = this.pop();
     let poppedFrame = this.popFrame();
