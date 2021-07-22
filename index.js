@@ -2569,6 +2569,65 @@ Runtime.prototype.generateGlobalEnv = function () {
         })
     );
 
+    TLObject.addProperty(
+        "assign",
+        this.newNativeFunction("assign", 2, function (vm, args, thisObj) {
+            if (
+                args[0].objectType !== JSObjectType.ORDINARY ||
+                args[1].objectType !== JSObjectType.ORDINARY
+            ) {
+                vm.panic(
+                    "Both arguments to Object.assign must be objects in thislang."
+                );
+            }
+
+            let target = args[0];
+            let source = args[1];
+            // copy indexed values
+            let sourceShapeTable = source.shape.shapeTable;
+            let sourceIndexedKeys = Object.keys(sourceShapeTable);
+            let key;
+            let index;
+            for (let i = 0; i < sourceIndexedKeys.length; i++) {
+                key = sourceIndexedKeys[i];
+                index = sourceShapeTable[key];
+                target.addProperty(key, source.indexedValues[index]);
+            }
+            // copy mapped values
+            let sourceMappedKeys = Object.keys(source.mappedValues);
+            for (let i = 0; i < sourceMappedKeys.length; i++) {
+                key = sourceMappedKeys[i];
+                target.mappedValues[key] = source.mappedValues[key];
+            }
+
+            return target;
+        })
+    );
+
+    TLObject.addProperty(
+        "keys",
+        this.newNativeFunction("keys", 1, function (vm, args, thisObj) {
+            let object = args[0];
+
+            if (object.objectType !== JSObjectType.ORDINARY) {
+                vm.panic(
+                    "Argument to Object.assign must be an object in thislang."
+                );
+            }
+
+            let keys = Object.keys(object.shape.shapeTable).map(function (k) {
+                return vm.runtime.newString(k);
+            });
+
+            let mappedKeys = Object.keys(object.mappedValues);
+            for (let i = 0; i < mappedKeys.length; i++) {
+                keys.push(vm.runtime.newString(mappedKeys[i]));
+            }
+
+            return vm.runtime.newArray(keys);
+        })
+    );
+
     env.add("Object", TLObject);
     //--------------------------------------------------
     // Number
@@ -2625,13 +2684,17 @@ Runtime.prototype.generateGlobalEnv = function () {
     //--------------------------------------------------
     // String
     //--------------------------------------------------
-    let TLString = this.newNativeFunction("String", 0, function (vm, args, thisObj) {
-        if (args.length === 0) {
-            return vm.runtime.newString("");
-        } else {
-            return vm.runtime.newString(toString(args[0]));
+    let TLString = this.newNativeFunction(
+        "String",
+        0,
+        function (vm, args, thisObj) {
+            if (args.length === 0) {
+                return vm.runtime.newString("");
+            } else {
+                return vm.runtime.newString(toString(args[0]));
+            }
         }
-    });
+    );
 
     env.add("String", TLString);
 
