@@ -2370,6 +2370,54 @@ Runtime.prototype.newArray = function (elements) {
 
     array.addProperty("length", this.newNumber(elements.length), true);
 
+    array.addProperty(
+        "map",
+        this.newNativeFunction("map", 1, function (vm, args, thisObj) {
+            let mapFn = args[0];
+            let mappedElements = thisObj.elements.map(function (x) {
+                // push fn twice (once to make up a slot for `arguments`)
+                vm.push(mapFn);
+                vm.push(mapFn);
+                // push `x` on stack as argument to mapFn
+                vm.push(x);
+                // call mapFn with 1 as value of numArguments
+                vm.callFunction(1);
+                // run VM with `singleFunctionRun` flag
+                vm.singleFunctionRun = true;
+                let value = vm.run();
+                vm.singleFunctionRun = false;
+                return value;
+            });
+
+            return vm.runtime.newArray(mappedElements);
+        }),
+        false
+    );
+
+    array.addProperty(
+        "filter",
+        this.newNativeFunction("filter", 1, function (vm, args, thisObj) {
+            let reduceFn = args[0];
+            let reducedElements = thisObj.elements.filter(function (x) {
+                // push fn twice (once to make up a slot for `arguments`)
+                vm.push(reduceFn);
+                vm.push(reduceFn);
+                // push `x` on stack as argument to mapFn
+                vm.push(x);
+                // call mapFn with 1 as value of numArguments
+                vm.callFunction(1);
+                // run VM with `singleFunctionRun` flag
+                vm.singleFunctionRun = true;
+                let value = vm.run();
+                vm.singleFunctionRun = false;
+                return vm.isTruthy(value);
+            });
+
+            return vm.runtime.newArray(reducedElements);
+        }),
+        false
+    );
+
     return array;
 };
 
@@ -4001,6 +4049,9 @@ function Vm(fun, runtime) {
 
     // this.openUpvars = {};
     this.openUpvars = [];
+
+    // run for just one function call
+    this.singleFunctionRun = false;
 }
 
 /** Run VM */
@@ -4114,16 +4165,20 @@ Vm.prototype.run = function () {
                 this.createFunction();
                 break;
             case Opcodes.RETURN:
-                this.return();
-                break;
+                if (this.singleFunctionRun) {
+                    return this.return();
+                } else {
+                    this.return();
+                    break;
+                }
             case Opcodes.CALL_FUNCTION:
-                this.callFunction();
+                this.callFunction(this.fetch());
                 break;
             case Opcodes.CALL_METHOD:
-                this.callMethod();
+                this.callMethod(this.fetch());
                 break;
             case Opcodes.CALL_CONSTRUCTOR:
-                this.callConstructor();
+                this.callConstructor(this.fetch());
                 break;
             case Opcodes.GET_UPVAR:
                 this.getUpvar();
@@ -4397,9 +4452,7 @@ Vm.prototype.getFromEnv = function () {
     }
 };
 
-Vm.prototype.callConstructor = function () {
-    let numArgs = this.fetch();
-
+Vm.prototype.callConstructor = function (numArgs) {
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4439,8 +4492,7 @@ Vm.prototype.callConstructor = function () {
     }
 };
 
-Vm.prototype.callMethod = function () {
-    let numArgs = this.fetch();
+Vm.prototype.callMethod = function (numArgs) {
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4486,9 +4538,7 @@ Vm.prototype.callMethod = function () {
     }
 };
 
-Vm.prototype.callFunction = function () {
-    let numArgs = this.fetch();
-
+Vm.prototype.callFunction = function (numArgs) {
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4606,6 +4656,7 @@ Vm.prototype.return = function () {
     }
 
     this.push(returnValue);
+    return returnValue;
 };
 
 Vm.prototype.createFunction = function () {
