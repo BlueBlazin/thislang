@@ -4,10 +4,6 @@
 // Constants
 //==================================================================
 
-// flag for debug logging
-let DEBUG_VM = true;
-let DEBUG_PARSER = false;
-
 let UINT8_MAX = 256 | 0;
 let FRAMES_MAX = 64 | 0;
 let STACK_MAX = FRAMES_MAX * UINT8_MAX;
@@ -26,12 +22,6 @@ function initArray(size, fillValue) {
     }
 
     return arr;
-}
-
-function dbg(flag, args) {
-    if (flag) {
-        console.log(...args);
-    }
 }
 
 //==================================================================
@@ -508,7 +498,6 @@ Parser.prototype.parse = function () {
 //------------------------------------------------------------------
 
 Parser.prototype.statementOrDeclaration = function () {
-    dbg(DEBUG_PARSER, ["statementOrDeclaration"]);
     let token = this.peek(0);
 
     if (token.type === TokenType.PUNCTUATOR) {
@@ -547,7 +536,6 @@ Parser.prototype.statementOrDeclaration = function () {
 };
 
 Parser.prototype.statement = function () {
-    dbg(DEBUG_PARSER, ["statement"]);
     let token = this.peek(0);
 
     if (token.type === TokenType.PUNCTUATOR) {
@@ -626,7 +614,6 @@ Parser.prototype.emptyStmt = function () {
 };
 
 Parser.prototype.blockStmt = function () {
-    dbg(DEBUG_PARSER, ["blockStmt"]);
     // consume `{`
     let line = this.advance().line;
 
@@ -638,7 +625,6 @@ Parser.prototype.blockStmt = function () {
 };
 
 Parser.prototype.ifStmt = function () {
-    dbg(DEBUG_PARSER, ["ifStmt"]);
     // consume `if`
     let line = this.advance().line;
 
@@ -666,7 +652,6 @@ Parser.prototype.ifStmt = function () {
 };
 
 Parser.prototype.forStmt = function () {
-    dbg(DEBUG_PARSER, ["forStmt"]);
     // consume `for`
     let line = this.advance().line;
 
@@ -715,7 +700,6 @@ Parser.prototype.forStmt = function () {
 };
 
 Parser.prototype.whileStmt = function () {
-    dbg(DEBUG_PARSER, ["whileStmt"]);
     // consume `while`
     let line = this.advance().line;
 
@@ -729,7 +713,6 @@ Parser.prototype.whileStmt = function () {
 };
 
 Parser.prototype.switchStmt = function () {
-    dbg(DEBUG_PARSER, ["switchStmt"]);
     // consume `switch`
     let line = this.advance().line;
 
@@ -834,7 +817,6 @@ Parser.prototype.switchCase = function () {
 };
 
 Parser.prototype.continueStmt = function () {
-    dbg(DEBUG_PARSER, ["continueStmt"]);
     if (!this.inIteration) {
         this.panic("Illegal continue statement");
     }
@@ -846,7 +828,6 @@ Parser.prototype.continueStmt = function () {
 };
 
 Parser.prototype.breakStmt = function () {
-    dbg(DEBUG_PARSER, ["breakStmt"]);
     if (!(this.inIteration || this.inSwitch)) {
         this.panic("Illegal break statement");
     }
@@ -858,7 +839,6 @@ Parser.prototype.breakStmt = function () {
 };
 
 Parser.prototype.returnStmt = function () {
-    dbg(DEBUG_PARSER, ["returnStmt"]);
     if (!this.inFunction) {
         this.panic("Illegal return statement");
     }
@@ -881,7 +861,6 @@ Parser.prototype.returnStmt = function () {
 };
 
 Parser.prototype.throwStmt = function () {
-    dbg(DEBUG_PARSER, ["throwStmt"]);
     // consume `throw`
     let line = this.advance().line;
 
@@ -898,7 +877,6 @@ Parser.prototype.throwStmt = function () {
 };
 
 Parser.prototype.functionDclr = function () {
-    dbg(DEBUG_PARSER, ["functionDclr"]);
     // consume `function`
     let line = this.advance().line;
 
@@ -918,7 +896,6 @@ Parser.prototype.functionDclr = function () {
 };
 
 Parser.prototype.letDclr = function () {
-    dbg(DEBUG_PARSER, ["letDclr"]);
     // consume `let`
     let line = this.advance().line;
     let id = this.identifier();
@@ -937,7 +914,6 @@ Parser.prototype.letDclr = function () {
 };
 
 Parser.prototype.expressionStmt = function () {
-    dbg(DEBUG_PARSER, ["expressionStmt"]);
     let expression = this.expression();
     this.expectSemicolon();
     return {
@@ -948,7 +924,6 @@ Parser.prototype.expressionStmt = function () {
 };
 
 Parser.prototype.statementList = function () {
-    dbg(DEBUG_PARSER, ["statementList"]);
     function predicate(token) {
         return token.type !== TokenType.PUNCTUATOR || token.value !== "}";
     }
@@ -964,7 +939,6 @@ Parser.prototype.statementList = function () {
 //------------------------------------------------------------------
 
 Parser.prototype.expression = function () {
-    dbg(DEBUG_PARSER, ["expression"]);
     let expr = this.assignmentExpr();
 
     let nextToken = this.peek(0);
@@ -994,7 +968,6 @@ Parser.prototype.expression = function () {
 };
 
 Parser.prototype.assignmentExpr = function () {
-    dbg(DEBUG_PARSER, ["assignmentExpr"]);
     let lhs = this.conditionalExpr();
 
     let nextToken = this.peek(0);
@@ -1030,7 +1003,6 @@ Parser.prototype.assignmentExpr = function () {
 };
 
 Parser.prototype.conditionalExpr = function () {
-    dbg(DEBUG_PARSER, ["conditionalExpr"]);
     let expr = this.binaryExpr();
 
     let nextToken = this.peek(0);
@@ -1057,14 +1029,12 @@ Parser.prototype.conditionalExpr = function () {
 
 /** Parse binary expressions using precedence climbing */
 Parser.prototype.binaryExpr = function () {
-    dbg(DEBUG_PARSER, ["binaryExpr"]);
     let lhs = this.unaryExpr();
 
     return this.precedenceClimbing(lhs, 1);
 };
 
 Parser.prototype.precedenceClimbing = function (lhs, precedence) {
-    dbg(DEBUG_PARSER, ["precedenceClimbing"]);
     let nextToken = this.peek(0);
 
     while (
@@ -1096,7 +1066,6 @@ Parser.prototype.precedenceClimbing = function (lhs, precedence) {
 };
 
 Parser.prototype.isBinaryOp = function (token) {
-    dbg(DEBUG_PARSER, ["isBinaryOp"]);
     if (token.type !== TokenType.PUNCTUATOR) {
         return token.type === TokenType.KEYWORD && token.value === "instanceof";
     }
@@ -1129,7 +1098,6 @@ Parser.prototype.isBinaryOp = function (token) {
 };
 
 Parser.prototype.precedence = function (token) {
-    dbg(DEBUG_PARSER, ["precedence"]);
     if (token.type !== TokenType.PUNCTUATOR) {
         if (token.type === TokenType.KEYWORD && token.value === "instanceof") {
             return 7;
@@ -1175,7 +1143,6 @@ Parser.prototype.precedence = function (token) {
 };
 
 Parser.prototype.unaryExpr = function () {
-    dbg(DEBUG_PARSER, ["unaryExpr"]);
     let nextToken = this.peek(0);
 
     if (this.isUnaryOp(nextToken)) {
@@ -1195,7 +1162,6 @@ Parser.prototype.unaryExpr = function () {
 };
 
 Parser.prototype.isUnaryOp = function (token) {
-    dbg(DEBUG_PARSER, ["isUnaryOp"]);
     if (
         token.type !== TokenType.KEYWORD &&
         token.type !== TokenType.PUNCTUATOR
@@ -1217,7 +1183,6 @@ Parser.prototype.isUnaryOp = function (token) {
 };
 
 Parser.prototype.updateExpr = function () {
-    dbg(DEBUG_PARSER, ["updateExpr"]);
     let nextToken = this.peek(0);
 
     if (
@@ -1261,7 +1226,6 @@ Parser.prototype.updateExpr = function () {
 };
 
 Parser.prototype.leftHandSideExpr = function () {
-    dbg(DEBUG_PARSER, ["leftHandSideExpr"]);
     let nextToken = this.peek(0);
 
     if (nextToken.type === TokenType.KEYWORD && nextToken.value === "new") {
@@ -1272,7 +1236,6 @@ Parser.prototype.leftHandSideExpr = function () {
 };
 
 Parser.prototype.newExpr = function () {
-    dbg(DEBUG_PARSER, ["newExpr"]);
     let nextToken = this.advance();
 
     let callee = this.memberExpr();
@@ -1288,14 +1251,12 @@ Parser.prototype.newExpr = function () {
 };
 
 Parser.prototype.callExpr = function () {
-    dbg(DEBUG_PARSER, ["callExpr"]);
     let expr = this.memberExpr();
 
     return this.callTail(expr);
 };
 
 Parser.prototype.memberExpr = function () {
-    dbg(DEBUG_PARSER, ["memberExpr"]);
     let expr = this.primary();
 
     while (true) {
@@ -1333,7 +1294,6 @@ Parser.prototype.memberExpr = function () {
 };
 
 Parser.prototype.callTail = function (expr) {
-    dbg(DEBUG_PARSER, ["callTail"]);
     while (true) {
         let nextToken = this.peek(0);
 
@@ -1380,7 +1340,6 @@ Parser.prototype.callTail = function (expr) {
 };
 
 Parser.prototype.callArguments = function () {
-    dbg(DEBUG_PARSER, ["arguments"]);
     // consume `(`
     this.advance();
 
@@ -1431,7 +1390,6 @@ Parser.prototype.callArguments = function () {
 
 /** Primary Expression */
 Parser.prototype.primary = function () {
-    dbg(DEBUG_PARSER, ["primary"]);
     let token = this.peek(0);
 
     switch (token.type) {
@@ -1477,7 +1435,6 @@ Parser.prototype.primary = function () {
 };
 
 Parser.prototype.function = function () {
-    dbg(DEBUG_PARSER, ["function"]);
     // consume `function`
     let line = this.advance().line;
 
@@ -1502,7 +1459,6 @@ Parser.prototype.function = function () {
 };
 
 Parser.prototype.parameters = function () {
-    dbg(DEBUG_PARSER, ["parameters"]);
     this.expect(TokenType.PUNCTUATOR, "(");
 
     function parseFn() {
@@ -1537,7 +1493,6 @@ Parser.prototype.parameters = function () {
 };
 
 Parser.prototype.functionBody = function () {
-    dbg(DEBUG_PARSER, ["functionBody"]);
     this.expect(TokenType.PUNCTUATOR, "{");
 
     let body = this.statementList();
@@ -1548,7 +1503,6 @@ Parser.prototype.functionBody = function () {
 };
 
 Parser.prototype.object = function () {
-    dbg(DEBUG_PARSER, ["object"]);
     // consume `{` and get line
     let line = this.advance().line;
 
@@ -1589,7 +1543,6 @@ Parser.prototype.object = function () {
 };
 
 Parser.prototype.propertyName = function () {
-    dbg(DEBUG_PARSER, ["propertyName"]);
     let token = this.peek(0);
 
     switch (token.type) {
@@ -1607,7 +1560,6 @@ Parser.prototype.propertyName = function () {
 };
 
 Parser.prototype.array = function () {
-    dbg(DEBUG_PARSER, ["array"]);
     // consume `[` and get line
     let line = this.advance().line;
 
@@ -1645,7 +1597,6 @@ Parser.prototype.array = function () {
 };
 
 Parser.prototype.literal = function () {
-    dbg(DEBUG_PARSER, ["literal"]);
     let token = this.advance();
 
     switch (token.type) {
@@ -1679,7 +1630,6 @@ Parser.prototype.literal = function () {
 };
 
 Parser.prototype.identifier = function () {
-    dbg(DEBUG_PARSER, ["identifier"]);
     let token = this.advance();
 
     return { type: AstType.IDENTIFIER, value: token.value, line: token.line };
@@ -1745,7 +1695,6 @@ Parser.prototype.expectSemicolon = function () {
 };
 
 Parser.prototype.parseWithWhile = function (parseFn, predicate) {
-    dbg(DEBUG_PARSER, ["parseWithWhile"]);
     let nodes = [];
 
     while (true) {
