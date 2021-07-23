@@ -3402,8 +3402,6 @@ Compiler.prototype.updateExpr = function (ast) {
         } else {
             this.emitByte(Opcodes.SUB);
         }
-        // duplicate value since it will be popped by the set op
-        this.emitByte(Opcodes.DUPLICATE);
         // set variable
         this.setLeftHandSideExpr(ast.argument);
     } else {
@@ -3448,6 +3446,10 @@ Compiler.prototype.assignmentExpr = function (ast) {
         case "/=":
             this.expression(ast.left);
             this.emitByte(Opcodes.DIV);
+            break;
+        case "%=":
+            this.expression(ast.left);
+            this.emitByte(Opcodes.MOD);
             break;
     }
     // emit set opcode
@@ -4904,22 +4906,21 @@ Vm.prototype.setByValue = function () {
     let value = this.pop();
 
     if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
-        return this.setArrayElem(object, id, value);
+        return this.setArrayElem(object, id.value, value);
     } else if (object.objectType !== undefined) {
-        return this.setObjectProp(object, id, value);
+        return this.setObjectProp(object, id.value, value);
     }
 };
 
-Vm.prototype.setArrayElem = function (object, id, value) {
-    let idx = id.value;
+Vm.prototype.setArrayElem = function (object, idx, value) {
     // array length is always offset 0 (invariant)
-    let length = object.indexedValues[0];
+    let length = object.indexedValues[0].value;
 
     if (idx < length) {
         object.elements[idx] = value;
         this.push(value);
     } else {
-        return setObjectProp(object, id, value);
+        return setObjectProp(object, idx, value);
     }
 };
 

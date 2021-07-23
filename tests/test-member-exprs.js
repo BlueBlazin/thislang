@@ -39,6 +39,6 @@ test("complex chained member expr", () => {
     runCode(`
         let x = [1, { a: [0, function () { return "b" }] }];
         let y = { x: [0, [1, 2, { b: 42 }]] }
-        assert(y.x[1][2][x[1].a[1]()]);
+        assert(y.x[1][2][x[1].a[1]()] === 42);
     `);
 });
