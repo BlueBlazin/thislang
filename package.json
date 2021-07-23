@@ -4,7 +4,7 @@
   "description": "An implementation of a subset of Javascript in that subset of Javascript.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "open tests/tests.html"
   },
   "repository": {
     "type": "git",

@@ -4828,7 +4828,7 @@ Vm.prototype.cmpNeq = function () {
     let lhs = this.pop();
     let rhs = this.pop();
 
-    this.push(lhs.neq(rhs));
+    this.push(lhs.neq(rhs, this.runtime));
 };
 
 Vm.prototype.cmpGt = function (strict) {
@@ -4946,7 +4946,6 @@ Vm.prototype.getByValue = function () {
     let id = this.pop();
     // pop object
     let object = this.pop();
-
     if (object.objectType === JSObjectType.ARRAY && id.type === JSType.NUMBER) {
         return this.getArrayElem(object, id.value);
     } else if (object.type === JSType.STRING && id.type === JSType.NUMBER) {
@@ -4970,7 +4969,7 @@ Vm.prototype.getStringChar = function (object, idx) {
 
 Vm.prototype.getArrayElem = function (object, idx) {
     // array length is always offset 0 (invariant)
-    let length = object.indexedValues[0];
+    let length = object.indexedValues[0].value;
 
     if (idx < length) {
         this.push(object.elements[idx]);

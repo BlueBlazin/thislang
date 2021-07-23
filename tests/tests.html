@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="tests-style.css" />
+    <title>Thislang Test Suite</title>
+  </head>
+  <body>
+    <div id="app">
+      <div class="header">Results</div>
+      <div id="tests-container"></div>
+      <div class="results">
+        <div>Passed: <span id="passed-count">0</span></div>
+        <div>Failed: <span id="failed-count">0</span></div>
+        <div>Total: <span id="total-count">0</span></div>
+      </div>
+    </div>
+    <script src="../thislang.js"></script>
+    <script src="./setup.js"></script>
+    <script src="./test-literals.js"></script>
+    <script src="./test-function-exprs.js"></script>
+    <script src="./test-member-exprs.js"></script>
+    <script src="./test-call-exprs.js"></script>
+    <script src="./test-update-exprs.js"></script>
+    <script src="./test-unary-exprs.js"></script>
+  </body>
+</html>
