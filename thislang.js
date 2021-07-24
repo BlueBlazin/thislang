@@ -5,6 +5,7 @@
 //==================================================================
 
 let UINT8_MAX = 256 | 0;
+let UINT16_MAX = 65536 | 0;
 let FRAMES_MAX = 64 | 0;
 let STACK_MAX = FRAMES_MAX * UINT8_MAX;
 let MAX_NUM_CONSTANTS = UINT8_MAX;
@@ -1761,60 +1762,60 @@ Parser.prototype.panic = function (msg) {
 
 // prettier-ignore
 let Opcodes = {
-    POP:               0x00,
-    PUSH_CONSTANT:     0x01,
-    PUSH_TRUE:         0x02,
-    PUSH_FALSE:        0x03,
-    PUSH_NULL:         0x04,
-    PUSH_THIS:         0x05,
-    ADD:               0x06,
-    SUB:               0x07,
-    MUL:               0x08,
-    DIV:               0x09,
-    NEW_OBJECT:        0x0A,
-    NEW_ARRAY:         0x0B,
-    GET_BY_ID:         0x0C,
-    SET_BY_ID:         0x0D,
-    GET_BY_VALUE:      0x0E,
-    SET_BY_VALUE:      0x0F,
-    JUMP_IF_FALSE:     0x10,
-    JUMP:              0x11,
-    PUSH_UNDEFINED:    0x12,
-    GET_LOCAL:         0x13,
-    GET_FROM_ENV:      0x14,
-    DUPLICATE:         0x15,
-    CMP_EQ:            0x16,
-    JUMP_IF_TRUE:      0x17,
-    LOOP:              0x18,
-    PUSH_INT:          0x19,
-    SET_LOCAL:         0x1A,
-    SET_FROM_ENV:      0x1B,
-    SWAP_TOP_TWO:      0x1C,
-    CMP_LT:            0x1D,  
-    CMP_LEQ:           0x1E,
-    CMP_GT:            0x1F,
-    CMP_GEQ:           0x20,
-    CMP_NEQ:           0x21,
-    CREATE_FUNCTION:   0x22,
-    RETURN:            0x23,
-    CALL_FUNCTION:     0x24,
-    CALL_METHOD:       0x25,
-    CALL_CONSTRUCTOR:  0x26,
-    GET_UPVAR:         0x27,
-    SET_UPVAR:         0x28,
-    CLOSE_UPVAR:       0x29,
-    SPREAD:            0x2A,
-    OR:                0x2B,
-    AND:               0x2C,
-    XOR:               0x2D,
-    MOD:               0x2E,
-    NOT:               0x2F,
-    TYPEOF:            0x30,
-    NEGATE:            0x31,
-    INSTANCEOF:        0x32,
-    PUSH_TRY_CATCH:    0x33,
-    POP_TRY_CATCH:     0x34,
-    THROW:             0x35,
+    POP:                0x00,
+    PUSH_CONSTANT:      0x01,
+    PUSH_TRUE:          0x02,
+    PUSH_FALSE:         0x03,
+    PUSH_NULL:          0x04,
+    PUSH_THIS:          0x05,
+    ADD:                0x06,
+    SUB:                0x07,
+    MUL:                0x08,
+    DIV:                0x09,
+    NEW_OBJECT:         0x0A,
+    NEW_ARRAY:          0x0B,
+    GET_BY_ID:          0x0C,
+    SET_BY_ID:          0x0D,
+    GET_BY_VALUE:       0x0E,
+    SET_BY_VALUE:       0x0F,
+    JUMP_IF_FALSE:      0x10,
+    JUMP:               0x11,
+    PUSH_UNDEFINED:     0x12,
+    GET_LOCAL:          0x13,
+    GET_FROM_ENV:       0x14,
+    DUPLICATE:          0x15,
+    CMP_EQ:             0x16,
+    JUMP_IF_TRUE:       0x17,
+    LOOP:               0x18,
+    PUSH_INT:           0x19,
+    SET_LOCAL:          0x1A,
+    SET_FROM_ENV:       0x1B,
+    SWAP_TOP_TWO:       0x1C,
+    CMP_LT:             0x1D,  
+    CMP_LEQ:            0x1E,
+    CMP_GT:             0x1F,
+    CMP_GEQ:            0x20,
+    CMP_NEQ:            0x21,
+    CREATE_FUNCTION:    0x22,
+    RETURN:             0x23,
+    CALL_FUNCTION:      0x24,
+    CALL_METHOD:        0x25,
+    CALL_CONSTRUCTOR:   0x26,
+    GET_UPVAR:          0x27,
+    SET_UPVAR:          0x28,
+    CLOSE_UPVAR:        0x29,
+    SPREAD:             0x2A,
+    OR:                 0x2B,
+    AND:                0x2C,
+    XOR:                0x2D,
+    MOD:                0x2E,
+    NOT:                0x2F,
+    TYPEOF:             0x30,
+    NEGATE:             0x31,
+    INSTANCEOF:         0x32,
+    PUSH_TRY_CATCH:     0x33,
+    POP_TRY_CATCH:      0x34,
+    THROW:              0x35,
 };
 
 //==================================================================
@@ -2930,7 +2931,7 @@ Compiler.prototype.functionDclr = function (ast) {
     this.functionExpr(ast);
     // add function to environment
     let index = this.addConstant(name);
-    this.emitBytes([Opcodes.SET_FROM_ENV, index]);
+    this.emitBytes([Opcodes.SET_FROM_ENV, (index >> 8) & 0xff, index & 0xff]);
     // pop function off the stack
     this.emitByte(Opcodes.POP);
 };
@@ -3463,9 +3464,17 @@ Compiler.prototype.getOrSetId = function (name, getOp) {
         idx = this.addConstant(name);
         // dynamically resolved env variable
         if (getOp) {
-            this.emitBytes([Opcodes.GET_FROM_ENV, idx]);
+            this.emitBytes([
+                Opcodes.GET_FROM_ENV,
+                (idx >> 8) & 0xff,
+                idx & 0xff,
+            ]);
         } else {
-            this.emitBytes([Opcodes.SET_FROM_ENV, idx]);
+            this.emitBytes([
+                Opcodes.SET_FROM_ENV,
+                (idx >> 8) & 0xff,
+                idx & 0xff,
+            ]);
         }
     }
 };
@@ -3538,7 +3547,7 @@ Compiler.prototype.staticMemberProperty = function (opcode, property) {
     this.emitByte(opcode);
     // emit constant index of property id
     let index = this.addConstant(this.runtime.newString(property));
-    this.emitByte(index);
+    this.emitBytes([(index >> 8) & 0xff, index & 0xff]);
     // ------ Inline cache info ----------
     // TODO: handle 8 bit limit for IC
     // emit shape id
@@ -3561,7 +3570,7 @@ Compiler.prototype.array = function (ast) {
     // add numElements to constant table
     let index = this.addConstant(numElements);
     // emit opcode to create the array
-    this.emitBytes([Opcodes.NEW_ARRAY, index]);
+    this.emitBytes([Opcodes.NEW_ARRAY, (index >> 8) & 0xff, index & 0xff]);
 };
 
 Compiler.prototype.object = function (ast) {
@@ -3584,7 +3593,7 @@ Compiler.prototype.object = function (ast) {
     // add numProperties to constant table
     let index = this.addConstant(numProperties);
     // emit opcode to create the object
-    this.emitBytes([Opcodes.NEW_OBJECT, index]);
+    this.emitBytes([Opcodes.NEW_OBJECT, (index >> 8) & 0xff, index & 0xff]);
 };
 
 Compiler.prototype.binary = function (ast) {
@@ -3776,7 +3785,11 @@ Compiler.prototype.emitReturn = function () {
 
 Compiler.prototype.emitFunction = function (fun) {
     let index = this.addConstant(fun);
-    this.emitBytes([Opcodes.CREATE_FUNCTION, index]);
+    this.emitBytes([
+        Opcodes.CREATE_FUNCTION,
+        (index >> 8) & 0xff,
+        index & 0xff,
+    ]);
 };
 
 Compiler.prototype.emitLoop = function (loopStart) {
@@ -3797,16 +3810,14 @@ Compiler.prototype.emitJump = function (jumpOpcode) {
 Compiler.prototype.emitPushConstant = function (value) {
     // add value to the constant table
     let index = this.addConstant(value);
-    // push that value (by retrieving it using the constant idx)
-    // onto the stack
-    this.emitBytes([Opcodes.PUSH_CONSTANT, index]);
+    this.emitBytes([Opcodes.PUSH_CONSTANT, (index >> 8) & 0xff, index & 0xff]);
 };
 
 /** Adds value to the current function's constants array and returns
  * the index. */
 Compiler.prototype.addConstant = function (value) {
-    if (this.function.constants.length === MAX_NUM_CONSTANTS) {
-        this.panic("Too many constants.");
+    if (this.function.constants.length === UINT16_MAX) {
+        this.panic("Too many constants");
     }
 
     this.function.constants.push(value);
@@ -3833,7 +3844,7 @@ function simpleInstr(name, state) {
 }
 
 function constInstr(name, code, constants, state) {
-    let idx = code[state.i + 1];
+    let idx = (code[state.i + 1] << 8) | code[state.i + 2];
     state.disassembly.push(
         String(state.i).padStart(5, "0") +
             ":    " +
@@ -3841,7 +3852,7 @@ function constInstr(name, code, constants, state) {
             " " +
             toString(constants[idx])
     );
-    state.i += 2;
+    state.i += 3;
 }
 
 function literalInstr(name, code, state) {
@@ -3875,7 +3886,7 @@ function jumpInstr(name, code, state, isLoop) {
 }
 
 function functionInstr(name, code, constants, state) {
-    let idx = code[state.i + 1];
+    let idx = (code[state.i + 1] << 8) | code[state.i + 2];
     let fun = constants[idx].vmFunction;
 
     state.disassembly.push(
@@ -3885,7 +3896,7 @@ function functionInstr(name, code, constants, state) {
             " " +
             fun.name
     );
-    state.i += 2;
+    state.i += 3;
     state.i += 2 * fun.upvarCount;
 
     state.functions.push(fun);
@@ -4584,7 +4595,6 @@ Vm.prototype.callMethod = function (numArgs) {
         callee.objectType !== JSObjectType.NATIVE &&
         callee.objectType !== JSObjectType.BOUND_FUNCTION
     ) {
-        console.log(callee);
         this.panic("Not a method.");
     }
     // get object from which method was called
@@ -4836,7 +4846,7 @@ Vm.prototype.pushInt = function () {
 };
 
 Vm.prototype.loop = function () {
-    let jump = (this.fetch() << 8) | this.fetch();
+    let jump = this.fetch16();
     this.currentFrame.ip -= jump;
 };
 
@@ -5169,7 +5179,7 @@ Vm.prototype.isTruthy = function (value) {
 
 /** Fetch constant */
 Vm.prototype.fetchConstant = function () {
-    let index = this.fetch();
+    let index = this.fetch16();
 
     if (this.currentFun.constants.length <= index) {
         this.panic("Invalid constant table index.");
@@ -5178,7 +5188,10 @@ Vm.prototype.fetchConstant = function () {
     return this.currentFun.constants[index];
 };
 
-/** Fetch next opcode */
+Vm.prototype.fetch16 = function () {
+    return (this.fetch() << 8) | this.fetch();
+};
+
 Vm.prototype.fetch = function () {
     return this.currentFun.code[this.currentFrame.ip++];
 };
