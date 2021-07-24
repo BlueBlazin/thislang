@@ -2004,6 +2004,10 @@ JSObject.prototype.addProperty = function (key, value, writable) {
     }
 };
 
+JSObject.prototype.ownMappedProperty = function (key) {
+    return Object.prototype.hasOwnProperty.bind(this.mappedValues)(key);
+};
+
 JSObject.prototype.equal = function (right, runtime) {
     return this === right ? runtime.JSTrue : runtime.JSFalse;
 };
@@ -2200,22 +2204,23 @@ function Runtime() {
     //---------------------------------------------
     this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
 
-    this.JSObjectPrototype.mappedValues["hasOwnProperty"] = this.newNativeFunction(
-        "hasOwnProperty",
-        1,
-        function (vm, args, thisObj) {
-            let key = toString(args[0]);
-            let shape = thisObj.shape;
+    this.JSObjectPrototype.mappedValues["hasOwnProperty"] =
+        this.newNativeFunction(
+            "hasOwnProperty",
+            1,
+            function (vm, args, thisObj) {
+                let key = toString(args[0]);
+                let shape = thisObj.shape;
 
-            if (shape.shapeTable.hasOwnProperty(key)) {
-                return vm.runtime.JSTrue;
-            } else if (thisObj.mappedValues.hasOwnProperty(key)) {
-                return vm.runtime.JSTrue;
-            } else {
-                return vm.runtime.JSFalse;
+                if (shape.shapeTable.hasOwnProperty(key)) {
+                    return vm.runtime.JSTrue;
+                } else if (thisObj.ownMappedProperty(key)) {
+                    return vm.runtime.JSTrue;
+                } else {
+                    return vm.runtime.JSFalse;
+                }
             }
-        }
-    );
+        );
 
     //---------------------------------------------
     // Booleans
@@ -4957,7 +4962,7 @@ Vm.prototype.setObjectProp = function (object, id, value) {
         let offset = shape.shapeTable[id].offset;
 
         this.getOrSetId(object.indexedValues, offset, true, value);
-    } else if (object.mappedValues.hasOwnProperty(id)) {
+    } else if (object.ownMappedProperty(id)) {
         this.getOrSetId(object.mappedValues, id, true, value);
     } else {
         // add property on object
@@ -5012,7 +5017,7 @@ Vm.prototype.getObjectProp = function (object, id) {
         let offset = shape.shapeTable[id].offset;
 
         this.getOrSetId(object.indexedValues, offset, false, null);
-    } else if (object.mappedValues.hasOwnProperty(id)) {
+    } else if (object.ownMappedProperty(id)) {
         this.getOrSetId(object.mappedValues, id, false, null);
     } else {
         this.getFromProtoChain(object.proto, id);
@@ -5059,7 +5064,7 @@ Vm.prototype.cachedSet = function (object, value) {
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
             this.getOrSetId(object.indexedValues, offset, true, value);
-        } else if (object.mappedValues.hasOwnProperty(id)) {
+        } else if (object.ownMappedProperty(id)) {
             this.getOrSetId(object.mappedValues, id, true, value);
         } else {
             // add property on object
@@ -5089,7 +5094,7 @@ Vm.prototype.cachedGet = function (object) {
             this.modifyCodeForIC(this.inlineCache.addShape(shape), offset);
 
             this.getOrSetId(object.indexedValues, offset, false, null);
-        } else if (object.mappedValues.hasOwnProperty(id)) {
+        } else if (object.ownMappedProperty(id)) {
             // look up mappedValues
             this.getOrSetId(object.mappedValues, id, false, null);
         } else {
@@ -5103,11 +5108,12 @@ Vm.prototype.getFromProtoChain = function (proto, id) {
 
     while (proto !== null && proto !== undefined) {
         shape = proto.shape;
+
         if (shape.shapeTable.hasOwnProperty(id)) {
             this.push(proto.indexedValues[shape.shapeTable[id].offset]);
             return;
-        } else if (proto.mappedValues.hasOwnProperty(id)) {
-            this.push(proto.mappedValues.hasOwnProperty(id));
+        } else if (proto.ownMappedProperty(id)) {
+            this.push(proto.mappedValues[id]);
             return;
         } else {
             // sup dawg i heard you liked protos - so i set proto to proto on proto

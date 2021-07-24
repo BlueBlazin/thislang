@@ -9,7 +9,7 @@ test("object hasOwnProperty", () => {
         let x = { a: 0 };
         let y = Object.create(x);
         y.b = 42;
-        assert(!x.hasOwnProperty("a"));
-        assert(x.hasOwnProperty("b"));
+        assert(!y.hasOwnProperty("a"));
+        assert(y.hasOwnProperty("b"));
     `);
 });
