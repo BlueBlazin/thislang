@@ -2241,6 +2241,81 @@ function Runtime() {
         []
     );
 
+    this.JSArrayPrototype.addProperty(
+        "push",
+        this.newNativeFunction("push", 1, function (vm, args, thisObj) {
+            let value = args[0];
+            thisObj.elements.push(value);
+            thisObj.indexedValues[0] = vm.runtime.newNumber(
+                thisObj.indexedValues[0].value + 1
+            );
+            return value;
+        })
+    );
+
+    this.JSArrayPrototype.addProperty(
+        "pop",
+        this.newNativeFunction("pop", 0, function (vm, args, thisObj) {
+            let value = thisObj.elements.pop();
+            thisObj.indexedValues[0] = vm.runtime.newNumber(
+                thisObj.indexedValues[0].value - 1
+            );
+            return value;
+        })
+    );
+
+    this.JSArrayPrototype.addProperty(
+        "map",
+        this.newNativeFunction("map", 1, function (vm, args, thisObj) {
+            let mapFn = args[0];
+            let mappedElements = thisObj.elements.map(function (x, idx) {
+                // push fn twice (once to make up a slot for `arguments`)
+                vm.push(mapFn);
+                vm.push(mapFn);
+                // push `x` on stack as argument to mapFn
+                vm.push(x);
+                // push indices on stack as second argument to mapFn
+                vm.push(vm.runtime.newNumber(idx));
+                // call mapFn with 2 as value of numArguments
+                vm.callFunction(2);
+                // run VM with `singleFunctionRun` flag
+                vm.singleRunStack[vm.singleRunStack.length - 1] = true;
+                vm.run();
+                let value = vm.pop();
+                return value;
+            });
+
+            return vm.runtime.newArray(mappedElements);
+        }),
+        false
+    );
+
+    this.JSArrayPrototype.addProperty(
+        "filter",
+        this.newNativeFunction("filter", 1, function (vm, args, thisObj) {
+            let filterFn = args[0];
+            let reducedElements = thisObj.elements.filter(function (x, idx) {
+                // push fn twice (once to make up a slot for `arguments`)
+                vm.push(filterFn);
+                vm.push(filterFn);
+                // push `x` on stack as argument to filterFn
+                vm.push(x);
+                // push indices on stack as second argument to filterFn
+                vm.push(vm.runtime.newNumber(idx));
+                // call mapFn with 2 as value of numArguments
+                vm.callFunction(2);
+                // run VM with `singleFunctionRun` flag
+                vm.singleRunStack[vm.singleRunStack.length - 1] = true;
+                vm.run();
+                let value = vm.pop();
+                return vm.isTruthy(value);
+            });
+
+            return vm.runtime.newArray(reducedElements);
+        }),
+        false
+    );
+
     //---------------------------------------------
     // String prototype
     //---------------------------------------------
@@ -2331,83 +2406,6 @@ Runtime.prototype.newArray = function (elements) {
     // INVARIANT: "length" must always be at index 0 of indexedValues
     // for JSArrays
     array.addProperty("length", this.newNumber(elements.length), true);
-
-    array.addProperty(
-        "push",
-        this.newNativeFunction("push", 1, function (vm, args, thisObj) {
-            let value = args[0];
-            thisObj.elements.push(value);
-            thisObj.indexedValues[0] = vm.runtime.newNumber(
-                thisObj.indexedValues[0].value + 1
-            );
-            return value;
-        })
-    );
-
-    array.addProperty(
-        "pop",
-        this.newNativeFunction("pop", 0, function (vm, args, thisObj) {
-            let value = thisObj.elements.pop();
-            thisObj.indexedValues[0] = vm.runtime.newNumber(
-                thisObj.indexedValues[0].value - 1
-            );
-            return value;
-        })
-    );
-
-    array.addProperty(
-        "map",
-        this.newNativeFunction("map", 1, function (vm, args, thisObj) {
-            let mapFn = args[0];
-            let mappedElements = thisObj.elements.map(function (x, idx) {
-                // push fn twice (once to make up a slot for `arguments`)
-                vm.push(mapFn);
-                vm.push(mapFn);
-                // push `x` on stack as argument to mapFn
-                vm.push(x);
-                // push indices on stack as second argument to mapFn
-                vm.push(vm.runtime.newNumber(idx));
-                // call mapFn with 2 as value of numArguments
-                vm.callFunction(2);
-                // run VM with `singleFunctionRun` flag
-                vm.singleRunStack[vm.singleRunStack.length - 1] = true;
-                vm.run();
-                let value = vm.pop();
-                return value;
-            });
-
-            return vm.runtime.newArray(mappedElements);
-        }),
-        false
-    );
-
-    array.addProperty(
-        "filter",
-        this.newNativeFunction("filter", 1, function (vm, args, thisObj) {
-            let filterFn = args[0];
-            let reducedElements = thisObj.elements.filter(function (x, idx) {
-                // push fn twice (once to make up a slot for `arguments`)
-                vm.push(filterFn);
-                vm.push(filterFn);
-                // push `x` on stack as argument to filterFn
-                vm.push(x);
-                // push indices on stack as second argument to filterFn
-                vm.push(vm.runtime.newNumber(idx));
-                // call mapFn with 2 as value of numArguments
-                vm.callFunction(2);
-                // run VM with `singleFunctionRun` flag
-                vm.singleRunStack[vm.singleRunStack.length - 1] = true;
-                vm.run();
-                let value = vm.pop();
-                return vm.isTruthy(value);
-            });
-
-            return vm.runtime.newArray(reducedElements);
-        }),
-        false
-    );
-
-    array.addProperty
 
     return array;
 };
