@@ -2363,6 +2363,42 @@ function Runtime() {
         })
     );
 
+    this.JSArrayPrototype.addProperty(
+        "slice",
+        this.newNativeFunction("slice", 2, function (vm, args, thisObj) {
+            let elements = thisObj.elements.slice(args[0].value, args[1].value);
+            return vm.runtime.newArray(elements);
+        })
+    );
+
+    this.JSArrayPrototype.addProperty(
+        "splice",
+        this.newNativeFunction("splice", 1, function (vm, args, thisObj) {
+            let start = args[0].value;
+            let deleteCount;
+
+            if (args.length === 1) {
+                deleteCount = thisObj.indexedValues[0].value;
+            } else {
+                deleteCount = args[1];
+            }
+
+            let elements = thisObj.elements.splice(
+                start,
+                deleteCount,
+                ...args.slice(2).map(function (x) {
+                    return x.value;
+                })
+            );
+
+            thisObj.indexedValues[0] = vm.runtime.newNumber(
+                thisObj.elements.length
+            );
+
+            return vm.runtime.newArray(elements);
+        })
+    );
+
     //---------------------------------------------
     // String prototype
     //---------------------------------------------
