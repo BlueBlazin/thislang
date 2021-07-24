@@ -2319,12 +2319,14 @@ function Runtime() {
     this.JSArrayPrototype.addProperty(
         "shift",
         this.newNativeFunction("shift", 0, function (vm, args, thisObj) {
-            let numElements = thisObj.elements.length;
+            let numElements = thisObj.indexedValues[0].value;
 
             if (numElements === 0) {
                 return vm.runtime.JSUndefined;
             } else {
-                thisObj.indexedValues[0] = vm.runtime.newNumber(thisObj.indexedValues[0] - 1);
+                thisObj.indexedValues[0] = vm.runtime.newNumber(
+                    numElements - 1
+                );
                 return thisObj.elements.shift();
             }
         })
@@ -2334,7 +2336,9 @@ function Runtime() {
         "unshift",
         this.newNativeFunction("unshift", 0, function (vm, args, thisObj) {
             thisObj.elements.unshift(...args);
-            thisObj.indexedValues[0] = vm.runtime.newNumber(thisObj.indexedValues[0] + args.length);
+            thisObj.indexedValues[0] = vm.runtime.newNumber(
+                thisObj.indexedValues[0].value + args.length
+            );
             return vm.runtime.newNumber(thisObj.elements.length);
         })
     );

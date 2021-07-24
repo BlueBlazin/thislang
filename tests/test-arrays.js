@@ -27,3 +27,51 @@ test("array pop", () => {
         assert(x.pop() === 5);
     `);
 });
+
+test("array shift", () => {
+    runCode(`
+        let x = [5, 6, 7];
+        assert(x.shift() === 5);
+        assert(x.shift() === 6);
+        assert(x.shift() === 7);
+    `);
+});
+
+test("array unshift", () => {
+    runCode(`
+        let x = [5, 6, 7];
+        assert(x.unshift(4) === 4);
+        assert(x.unshift(3) === 5);
+        assert(x.unshift(2, 1, 0) === 8);
+    `);
+
+    runCode(`
+        let x = [5];
+        x.unshift(4);
+        assert(x[0] === 4);
+        assert(x[1] === 5);
+        x.unshift(3);
+        assert(x[0] === 3);
+        assert(x[1] === 4);
+        assert(x[2] === 5);
+        x.unshift();
+        assert(x.length === 3);
+    `);
+});
+
+test("array length", () => {
+    runCode(`
+        let x = [5, 6, 7];
+        assert(x.length === 3);
+        x.push(8);
+        assert(x.length === 4);
+        let y = [];
+        assert(y.length === 0);
+        y.push(1);
+        assert(y.length === 1);
+        y.unshift(0);
+        assert(y.length === 2);
+        y.shift();
+        assert(y.length === 1);
+    `);
+});
