@@ -2865,6 +2865,7 @@ Compiler.prototype.forStmt = function (ast) {
     this.patchContinue();
     // compile update
     this.expression(ast.update);
+    this.emitByte(Opcodes.POP);
     // loop back
     this.emitLoop(loopStart);
     // patch jump
@@ -4814,6 +4815,7 @@ Vm.prototype.swapTopTwo = function () {
 Vm.prototype.setLocal = function () {
     let offset = this.fetch();
     this.stack[this.currentFrame.fp + offset] = this.peek();
+    // this.stack[this.currentFrame.fp + offset] = this.pop();
 };
 
 Vm.prototype.pushInt = function () {
