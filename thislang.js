@@ -2356,9 +2356,9 @@ Runtime.prototype.newArray = function (elements) {
                 // call mapFn with 1 as value of numArguments
                 vm.callFunction(1);
                 // run VM with `singleFunctionRun` flag
-                vm.singleFunctionRun = true;
-                let value = vm.run();
-                vm.singleFunctionRun = false;
+                vm.singleRunStack[vm.singleRunStack.length - 1] = true;
+                vm.run();
+                let value = vm.pop();
                 return value;
             });
 
@@ -2380,9 +2380,9 @@ Runtime.prototype.newArray = function (elements) {
                 // call mapFn with 1 as value of numArguments
                 vm.callFunction(1);
                 // run VM with `singleFunctionRun` flag
-                vm.singleFunctionRun = true;
-                let value = vm.run();
-                vm.singleFunctionRun = false;
+                vm.singleRunStack[vm.singleRunStack.length - 1] = true;
+                vm.run();
+                let value = vm.pop();
                 return vm.isTruthy(value);
             });
 
@@ -4120,7 +4120,7 @@ function Vm(fun, runtime) {
     this.openUpvars = [];
 
     // run for just one function call
-    this.singleFunctionRun = false;
+    this.singleRunStack = [false];
 }
 
 /** Run VM */
@@ -4234,7 +4234,7 @@ Vm.prototype.run = function () {
                 this.createFunction();
                 break;
             case Opcodes.RETURN:
-                if (this.singleFunctionRun) {
+                if (this.singleRunStack.pop()) {
                     return this.return();
                 } else {
                     this.return();
@@ -4522,6 +4522,9 @@ Vm.prototype.getFromEnv = function () {
 };
 
 Vm.prototype.callConstructor = function (numArgs) {
+    // push false on singleRun stack
+    this.singleRunStack.push(false);
+
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4562,6 +4565,9 @@ Vm.prototype.callConstructor = function (numArgs) {
 };
 
 Vm.prototype.callMethod = function (numArgs) {
+    // push false on singleRun stack
+    this.singleRunStack.push(false);
+
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4608,6 +4614,9 @@ Vm.prototype.callMethod = function (numArgs) {
 };
 
 Vm.prototype.callFunction = function (numArgs) {
+    // push false on singleRun stack
+    this.singleRunStack.push(false);
+
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4725,7 +4734,6 @@ Vm.prototype.return = function () {
     }
 
     this.push(returnValue);
-    return returnValue;
 };
 
 Vm.prototype.createFunction = function () {
