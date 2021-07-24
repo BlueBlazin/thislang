@@ -1954,7 +1954,7 @@ function Shape(key, offset, parent) {
 
 Shape.prototype.transition = function (key) {
     if (
-        this.transitions[key] !== undefined &&
+        this.transitions.hasOwnProperty(key) &&
         !(key === "constructor" && this.constructorFlag)
     ) {
         return this.transitions[key];
@@ -1974,7 +1974,6 @@ Shape.prototype.transition = function (key) {
     shape.shapeTable[key] = shape;
 
     this.transitions[key] = shape;
-
     return shape;
 };
 
@@ -2197,10 +2196,26 @@ function Runtime() {
     this.emptyObjectShape = new Shape("", null, null);
 
     //---------------------------------------------
-    // Builtin objects
-    //---------------------------------------------
     // Object prototype
+    //---------------------------------------------
     this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
+
+    this.JSObjectPrototype.mappedValues["hasOwnProperty"] = this.newNativeFunction(
+        "hasOwnProperty",
+        1,
+        function (vm, args, thisObj) {
+            let key = toString(args[0]);
+            let shape = thisObj.shape;
+
+            if (shape.shapeTable.hasOwnProperty(key)) {
+                return vm.runtime.JSTrue;
+            } else if (thisObj.mappedValues.hasOwnProperty(key)) {
+                return vm.runtime.JSTrue;
+            } else {
+                return vm.runtime.JSFalse;
+            }
+        }
+    );
 
     //---------------------------------------------
     // Booleans
@@ -4875,7 +4890,6 @@ Vm.prototype.swapTopTwo = function () {
 Vm.prototype.setLocal = function () {
     let offset = this.fetch();
     this.stack[this.currentFrame.fp + offset] = this.peek();
-    // this.stack[this.currentFrame.fp + offset] = this.pop();
 };
 
 Vm.prototype.pushInt = function () {
@@ -5265,7 +5279,6 @@ Vm.prototype.peek = function () {
 
 /** Push value on top of stack */
 Vm.prototype.push = function (value) {
-    // console.log("Stack before push: " + this.stack.slice(0, 4));
     if (this.sp < STACK_MAX) {
         this.stack[this.sp++] = value;
     } else {
@@ -5275,7 +5288,6 @@ Vm.prototype.push = function (value) {
 
 /** Pop value from top of stack and return it */
 Vm.prototype.pop = function () {
-    // console.log("Stack before pop: " + this.stack.slice(0, 4));
     if (this.sp > 0) {
         let value = this.stack[--this.sp];
         return value;
