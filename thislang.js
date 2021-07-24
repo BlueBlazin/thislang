@@ -2544,7 +2544,7 @@ Runtime.prototype.generateGlobalEnv = function () {
             let index;
             for (let i = 0; i < sourceIndexedKeys.length; i++) {
                 key = sourceIndexedKeys[i];
-                index = sourceShapeTable[key];
+                index = sourceShapeTable[key].offset;
                 target.addProperty(key, source.indexedValues[index]);
             }
             // copy mapped values
