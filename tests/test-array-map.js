@@ -31,3 +31,13 @@ test("array map complex callback", () => {
         assert(arr[2] === 9);
     `);
 });
+
+test("array map index argument", () => {
+    runCode(`
+        let arr = [5, 6, 7];
+        arr = arr.map(function (x, i) { return i; });
+        assert(arr[0] === 0);
+        assert(arr[1] === 1);
+        assert(arr[2] === 2);
+    `);
+});

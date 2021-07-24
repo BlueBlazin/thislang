@@ -2324,22 +2324,23 @@ Runtime.prototype.newArray = function (elements) {
     array.addProperty(
         "push",
         this.newNativeFunction("push", 1, function (vm, args, thisObj) {
-            thisObj.elements.push(args[0]);
+            let value = args[0];
+            thisObj.elements.push(value);
             thisObj.indexedValues[0] = vm.runtime.newNumber(
                 thisObj.indexedValues[0].value + 1
             );
-            return thisObj;
+            return value;
         })
     );
 
     array.addProperty(
         "pop",
         this.newNativeFunction("pop", 0, function (vm, args, thisObj) {
-            thisObj.elements.pop();
+            let value = thisObj.elements.pop();
             thisObj.indexedValues[0] = vm.runtime.newNumber(
                 thisObj.indexedValues[0].value - 1
             );
-            return thisObj;
+            return value;
         })
     );
 
@@ -2347,14 +2348,16 @@ Runtime.prototype.newArray = function (elements) {
         "map",
         this.newNativeFunction("map", 1, function (vm, args, thisObj) {
             let mapFn = args[0];
-            let mappedElements = thisObj.elements.map(function (x) {
+            let mappedElements = thisObj.elements.map(function (x, idx) {
                 // push fn twice (once to make up a slot for `arguments`)
                 vm.push(mapFn);
                 vm.push(mapFn);
                 // push `x` on stack as argument to mapFn
                 vm.push(x);
-                // call mapFn with 1 as value of numArguments
-                vm.callFunction(1);
+                // push indices on stack as second argument to mapFn
+                vm.push(vm.runtime.newNumber(idx));
+                // call mapFn with 2 as value of numArguments
+                vm.callFunction(2);
                 // run VM with `singleFunctionRun` flag
                 vm.singleRunStack[vm.singleRunStack.length - 1] = true;
                 vm.run();
@@ -2370,15 +2373,17 @@ Runtime.prototype.newArray = function (elements) {
     array.addProperty(
         "filter",
         this.newNativeFunction("filter", 1, function (vm, args, thisObj) {
-            let reduceFn = args[0];
-            let reducedElements = thisObj.elements.filter(function (x) {
+            let filterFn = args[0];
+            let reducedElements = thisObj.elements.filter(function (x, idx) {
                 // push fn twice (once to make up a slot for `arguments`)
-                vm.push(reduceFn);
-                vm.push(reduceFn);
-                // push `x` on stack as argument to mapFn
+                vm.push(filterFn);
+                vm.push(filterFn);
+                // push `x` on stack as argument to filterFn
                 vm.push(x);
-                // call mapFn with 1 as value of numArguments
-                vm.callFunction(1);
+                // push indices on stack as second argument to filterFn
+                vm.push(vm.runtime.newNumber(idx));
+                // call mapFn with 2 as value of numArguments
+                vm.callFunction(2);
                 // run VM with `singleFunctionRun` flag
                 vm.singleRunStack[vm.singleRunStack.length - 1] = true;
                 vm.run();
