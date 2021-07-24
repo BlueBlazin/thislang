@@ -2202,7 +2202,9 @@ function Runtime() {
     // Object prototype
     this.JSObjectPrototype = new JSObject(this.emptyObjectShape, null);
 
-    // Boolean
+    //---------------------------------------------
+    // Booleans
+    //---------------------------------------------
     this.JSBooleanPrototype = new JSBoolean(
         this.emptyObjectShape,
         this.JSObjectPrototype,
@@ -2221,28 +2223,36 @@ function Runtime() {
         false
     );
 
+    //---------------------------------------------
     // Number prototype
+    //---------------------------------------------
     this.JSNumberPrototype = new JSNumber(
         this.emptyObjectShape,
         this.JSObjectPrototype,
         0
     );
 
+    //---------------------------------------------
     // Array prototype
+    //---------------------------------------------
     this.JSArrayPrototype = new JSArray(
         this.emptyObjectShape,
         this.JSObjectPrototype,
         []
     );
 
+    //---------------------------------------------
     // String prototype
+    //---------------------------------------------
     this.JSStringPrototype = new JSString(
         this.emptyObjectShape,
         this.JSObjectPrototype,
         ""
     );
 
+    //---------------------------------------------
     // Function prototype
+    //---------------------------------------------
     this.JSFunctionPrototype = new JSFunction(
         this.emptyObjectShape,
         this.JSObjectPrototype,
@@ -2396,6 +2406,8 @@ Runtime.prototype.newArray = function (elements) {
         }),
         false
     );
+
+    array.addProperty
 
     return array;
 };
