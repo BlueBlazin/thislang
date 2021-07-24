@@ -2316,6 +2316,29 @@ function Runtime() {
         false
     );
 
+    this.JSArrayPrototype.addProperty(
+        "shift",
+        this.newNativeFunction("shift", 0, function (vm, args, thisObj) {
+            let numElements = thisObj.elements.length;
+
+            if (numElements === 0) {
+                return vm.runtime.JSUndefined;
+            } else {
+                thisObj.indexedValues[0] = vm.runtime.newNumber(thisObj.indexedValues[0] - 1);
+                return thisObj.elements.shift();
+            }
+        })
+    );
+
+    this.JSArrayPrototype.addProperty(
+        "unshift",
+        this.newNativeFunction("unshift", 0, function (vm, args, thisObj) {
+            thisObj.elements.unshift(...args);
+            thisObj.indexedValues[0] = vm.runtime.newNumber(thisObj.indexedValues[0] + args.length);
+            return vm.runtime.newNumber(thisObj.elements.length);
+        })
+    );
+
     //---------------------------------------------
     // String prototype
     //---------------------------------------------
