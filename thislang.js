@@ -1862,11 +1862,11 @@ function toString(value) {
         case JSType.UNDEFINED:
             return "undefined";
         case JSType.STRING:
-            return value.value;
+            // dirty hack - how to fix?
+            return value.value === "\\n" ? "\n" : value.value;
         case JSType.OBJECT:
             return objectToString(value);
         default:
-            // throw Error("Unknown type: " + value);
             return value + "";
     }
 }
