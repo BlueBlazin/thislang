@@ -49,3 +49,22 @@ test("spread arg in special arguments array", () => {
         foo(...arr);
     `);
 });
+
+test("spread arg in calls from functions", () => {
+    runCode(`
+        function foo(x, y, z) {
+            assert(x === 0);
+            assert(y === 1);
+            assert(z === 2);
+        }
+
+        function bar() {
+            foo(...[0, 1, 2]);
+            foo(...[0, 1, 2]);
+            foo(...[0, 1, 2]);
+        }
+
+        bar();
+        bar();
+    `);
+});

@@ -4691,6 +4691,7 @@ Vm.prototype.or = function () {
 
 Vm.prototype.spread = function () {
     let argument = this.pop();
+
     if (argument.objectType !== JSObjectType.ARRAY) {
         this.panic("Invalid spread argument type.");
     }
@@ -4699,16 +4700,15 @@ Vm.prototype.spread = function () {
     for (let i = 0; i < elements.length; i++) {
         this.push(elements[i]);
     }
-    // modify call instruction's arg count
+    // calculate new arg count
     let code = this.currentFun.code;
-    let ip = this.currentFrame.ip;
-    let newArgCount = code[ip + 1] + elements.length - 1;
+    let newArgCount = code[this.currentFrame.ip + 1] + elements.length - 1;
 
     if (newArgCount > UINT8_MAX) {
         this.panic("Too many arguments.");
     }
-
-    code[ip + 1] = newArgCount;
+    // push sentinel onto stack
+    this.push({ type: JSType.SPREAD, value: newArgCount });
 };
 
 Vm.prototype.closeUpvars = function (last) {
@@ -4775,6 +4775,11 @@ Vm.prototype.callConstructor = function (numArgs) {
     // push false on singleRun stack
     this.singleRunStack.push(false);
 
+    // check for spread sentinel
+    if (this.peek().type === JSType.SPREAD) {
+        numArgs = this.pop().value;
+    }
+
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
     let callee = this.stack[idx];
@@ -4817,6 +4822,11 @@ Vm.prototype.callConstructor = function (numArgs) {
 Vm.prototype.callMethod = function (numArgs) {
     // push false on singleRun stack
     this.singleRunStack.push(false);
+
+    // check for spread sentinel
+    if (this.peek().type === JSType.SPREAD) {
+        numArgs = this.pop().value;
+    }
 
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
@@ -4865,6 +4875,11 @@ Vm.prototype.callMethod = function (numArgs) {
 Vm.prototype.callFunction = function (numArgs) {
     // push false on singleRun stack
     this.singleRunStack.push(false);
+
+    // check for spread sentinel
+    if (this.peek().type === JSType.SPREAD) {
+        numArgs = this.pop().value;
+    }
 
     let idx = this.sp - 1 - numArgs;
     // get callee (JSFunction)
