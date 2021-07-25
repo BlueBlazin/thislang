@@ -2320,7 +2320,7 @@ function Runtime() {
                 vm.push(vm.runtime.newNumber(idx));
                 // call mapFn with 2 as value of numArguments
                 vm.callFunction(2);
-                // run VM with `singleFunctionRun` flag
+                // run VM with single function run flag
                 vm.singleRunStack[vm.singleRunStack.length - 1] = true;
                 vm.run();
                 let value = vm.pop();
@@ -2346,7 +2346,7 @@ function Runtime() {
                 vm.push(vm.runtime.newNumber(idx));
                 // call mapFn with 2 as value of numArguments
                 vm.callFunction(2);
-                // run VM with `singleFunctionRun` flag
+                // run VM with single function run flag
                 vm.singleRunStack[vm.singleRunStack.length - 1] = true;
                 vm.run();
                 let value = vm.pop();
@@ -2505,7 +2505,26 @@ function Runtime() {
         })
     );
 
-    // TODO: Function.prototype.call
+    this.JSFunctionPrototype.addProperty(
+        "call",
+        this.newNativeFunction("call", 1, function (vm, args, thisObj) {
+            let fun = thisObj.vmFunction.clone();
+            fun.boundThis = args[0];
+            fun.boundArgs = args.slice(1);
+            // create new bound JSFunction
+            let boundFn = vm.runtime.newBoundFunction(fun, thisObj.proto);
+            // push fn twice (once to make up a slot for `arguments`)
+            vm.push(boundFn);
+            vm.push(boundFn);
+            // call boundFn with 0 as value of numArguments
+            vm.callFunction(0);
+            // run VM with single function run flag
+            vm.singleRunStack[vm.singleRunStack.length - 1] = true;
+            vm.run();
+            // return the return value from boundFn
+            return vm.pop();
+        })
+    );
 }
 
 Runtime.prototype.newBoundFunction = function (boundVmFunction, proto) {
