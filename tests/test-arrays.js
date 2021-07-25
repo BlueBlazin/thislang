@@ -75,3 +75,12 @@ test("array length", () => {
         assert(y.length === 1);
     `);
 });
+
+test("array join", () => {
+    runCode(`
+        let x = [5, 6, 7];
+        assert(x.join("|") === "5|6|7");
+        assert(x.join(", ") === "5, 6, 7");
+        assert(x.join() === "5,6,7");
+    `);
+});

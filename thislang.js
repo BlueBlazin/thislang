@@ -2196,7 +2196,7 @@ function Runtime() {
     // primitive constants
     this.JSNull = new JSNull();
     this.JSUndefined = new JSUndefined();
-
+    // root shape
     this.emptyObjectShape = new Shape("", null, null);
 
     //---------------------------------------------
@@ -2396,6 +2396,18 @@ function Runtime() {
             );
 
             return vm.runtime.newArray(elements);
+        })
+    );
+
+    this.JSArrayPrototype.addProperty(
+        "join",
+        this.newNativeFunction("join", 1, function (vm, args, thisObj) {
+            let joinString =
+                args[0] === vm.runtime.JSUndefined ? "," : toString(args[0]);
+
+            return vm.runtime.newString(
+                thisObj.elements.map(toString).join(joinString)
+            );
         })
     );
 
