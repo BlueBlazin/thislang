@@ -7,19 +7,19 @@ test("binary math operators", () => {
     runCode("assert(11 % 5 === 1)");
 });
 
-// test("binary bitwise shifts", () => {
-//     runCode("assert(3 >> 1 === 1)");
-//     runCode("assert(3 >> 2 === 0)");
-//     runCode("assert(2 << 1 === 4)");
-//     runCode("assert(2 << 2 === 8)");
-// });
+test("binary bitwise shifts", () => {
+    runCode("assert(3 >> 1 === 1)");
+    runCode("assert(3 >> 2 === 0)");
+    runCode("assert(2 << 1 === 4)");
+    runCode("assert(2 << 2 === 8)");
+});
 
-// test("binary bitwise shifts", () => {
-//     runCode("assert(3 >> 1 === 1)");
-//     runCode("assert(3 >> 2 === 0)");
-//     runCode("assert(2 << 1 === 4)");
-//     runCode("assert(2 << 2 === 8)");
-// });
+test("binary bitwise shifts", () => {
+    runCode("assert(3 >> 1 === 1)");
+    runCode("assert(3 >> 2 === 0)");
+    runCode("assert(2 << 1 === 4)");
+    runCode("assert(2 << 2 === 8)");
+});
 
 test("binary relational operators", () => {
     runCode("assert(3 < 1 === false)");

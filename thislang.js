@@ -1823,6 +1823,8 @@ let Opcodes = {
     PUSH_TRY_CATCH:     0x33,
     POP_TRY_CATCH:      0x34,
     THROW:              0x35,
+    LSHIFT:             0x36,
+    RSHIFT:             0x37,
 };
 
 //==================================================================
@@ -2072,6 +2074,14 @@ JSNumber.prototype.mod = function (right, runtime) {
 
 JSNumber.prototype.xor = function (right, runtime) {
     return runtime.newNumber(this.value ^ right.value);
+};
+
+JSNumber.prototype.lshift = function (right, runtime) {
+    return runtime.newNumber(this.value << right.value);
+};
+
+JSNumber.prototype.rshift = function (right, runtime) {
+    return runtime.newNumber(this.value >> right.value);
 };
 
 JSNumber.prototype.equal = TLCommonEqual;
@@ -3787,6 +3797,10 @@ Compiler.prototype.binary = function (ast) {
             return this.compileArgsAndEmit(ast, Opcodes.MOD);
         case "instanceof":
             return this.compileArgsAndEmit(ast, Opcodes.INSTANCEOF);
+        case "<<":
+            return this.compileArgsAndEmit(ast, Opcodes.LSHIFT);
+        case ">>":
+            return this.compileArgsAndEmit(ast, Opcodes.RSHIFT);
         default:
             this.panic("Invalid binary operator " + ast.operator);
     }
@@ -4228,8 +4242,14 @@ function dis(code, constants, name) {
             case Opcodes.THROW:
                 simpleInstr("THROW", state);
                 break;
+            case Opcodes.LSHIFT:
+                simpleInstr("LSHIFT", state);
+                break;
+            case Opcodes.RSHIFT:
+                simpleInstr("RSHIFT", state);
+                break;
             default:
-                throw Error("Unknown opcode");
+                throw "Unknown opcode";
         }
     }
 
@@ -4463,6 +4483,12 @@ Vm.prototype.run = function () {
             case Opcodes.THROW:
                 this.throw();
                 break;
+            case Opcodes.LSHIFT:
+                this.lshift();
+                break;
+            case Opcodes.RSHIFT:
+                this.rshift();
+                break;
         }
     }
 };
@@ -4470,6 +4496,20 @@ Vm.prototype.run = function () {
 //------------------------------------------------------------------
 // VM - instructions
 //------------------------------------------------------------------
+
+Vm.prototype.rshift = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    this.push(lhs.rshift(rhs, this.runtime));
+};
+
+Vm.prototype.lshift = function () {
+    let lhs = this.pop();
+    let rhs = this.pop();
+
+    this.push(lhs.lshift(rhs, this.runtime));
+};
 
 Vm.prototype.throw = function () {
     let trace = [];
