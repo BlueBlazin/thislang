@@ -1839,6 +1839,7 @@ let JSType = {
     UNDEFINED:  0x03,
     STRING:     0x04,
     OBJECT:     0x05,
+    SPREAD:     0x06,
 };
 
 // prettier-ignore
