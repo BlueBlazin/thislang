@@ -19,7 +19,6 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
   - Boolean
   - Null
   - Undefined
-- Objects
 - Prototypal Inheritance
 - Function declarations
 - Function expressions

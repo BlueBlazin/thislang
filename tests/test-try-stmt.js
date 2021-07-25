@@ -29,6 +29,11 @@ test("catch error value", () => {
         } catch (e) {
             assert(e === 42);
         }
+
+        let x = false;
+        let y = true;
+        let z = false;
+        assert(y);
     `);
 
     runCode(`
@@ -38,6 +43,10 @@ test("catch error value", () => {
             }
 
             ham();
+        }
+
+        function spam() {
+            return 42;
         }
 
         function bar() {
@@ -55,5 +64,8 @@ test("catch error value", () => {
         } catch (e) {
             assert(e === 42);
         }
+
+        spam();
+        assert(true);
     `);
 });
