@@ -2285,13 +2285,14 @@ function Runtime() {
 
     this.JSArrayPrototype.addProperty(
         "push",
-        this.newNativeFunction("push", 1, function (vm, args, thisObj) {
-            let value = args[0];
-            thisObj.elements.push(value);
+        this.newNativeFunction("push", 0, function (vm, args, thisObj) {
+            thisObj.elements.push(...args);
+
             thisObj.indexedValues[0] = vm.runtime.newNumber(
-                thisObj.indexedValues[0].value + 1
+                thisObj.elements.length
             );
-            return value;
+
+            return thisObj.indexedValues[0];
         })
     );
 
@@ -2457,6 +2458,24 @@ function Runtime() {
 
             return vm.runtime.newString(
                 thisObj.value.padStart(targetLength, padString)
+            );
+        }
+    );
+
+    this.JSStringPrototype.mappedValues["padEnd"] = this.newNativeFunction(
+        "padEnd",
+        2,
+        function (vm, args, thisObj) {
+            if (args[0].type !== JSType.NUMBER) {
+                vm.panic("Target length must be a number");
+            }
+
+            let targetLength = args[0].value;
+            let padString =
+                args[1] === vm.runtime.JSUndefined ? " " : toString(args[1]);
+
+            return vm.runtime.newString(
+                thisObj.value.padEnd(targetLength, padString)
             );
         }
     );

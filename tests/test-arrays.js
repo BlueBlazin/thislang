@@ -10,12 +10,32 @@ test("array push", () => {
     `);
 });
 
+test("array push multiple args", () => {
+    runCode(`
+        let x = [];
+        x.push(0, 1, 2);
+        assert(x[0] === 0);
+        assert(x[1] === 1);
+        assert(x[2] === 2);
+    `);
+});
+
+test("array push zero args", () => {
+    runCode(`
+        let x = [];
+        x.push();
+        x.push();
+        x.push();
+        assert(x.length === 0);
+    `);
+});
+
 test("array push return value", () => {
     runCode(`
         let x = [];
-        assert(x.push(0) === 0);
-        assert(x.push(1) === 1);
-        assert(x.push(2) === 2);
+        assert(x.push(5) === 1);
+        assert(x.push(6) === 2);
+        assert(x.push(7) === 3);
     `);
 });
 
