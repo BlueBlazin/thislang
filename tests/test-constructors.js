@@ -32,3 +32,13 @@ test("constructors with return values", () => {
         assert(new Foo() !== 42);
     `);
 });
+
+test("constructor prototype property", () => {
+    runCode(`
+        function Foo() {
+            return 42;
+        }
+
+        assert(Foo.prototype.constructor === Foo);
+    `);
+});
