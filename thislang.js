@@ -2009,7 +2009,7 @@ function JSObject(shape, proto) {
 }
 
 JSObject.prototype.addProperty = function (key, value, writable) {
-    if (this.indexedValues.length < UINT8_MAX) {
+    if (key !== "hasOwnProperty" && this.indexedValues.length < UINT8_MAX) {
         this.shape = this.shape.transition(key);
         this.indexedValues.push(value);
     } else {
@@ -2018,7 +2018,7 @@ JSObject.prototype.addProperty = function (key, value, writable) {
 };
 
 JSObject.prototype.ownMappedProperty = function (key) {
-    return Object.prototype.hasOwnProperty.bind(this.mappedValues)(key);
+    return Object.prototype.hasOwnProperty.call(this.mappedValues, key);
 };
 
 JSObject.prototype.equal = function (right, runtime) {
