@@ -220,7 +220,10 @@ Tokenizer.prototype.scanString = function () {
 Tokenizer.prototype.scanNumber = function () {
     let res = this.scanWhile(this.isNumber.bind(this));
 
-    if (this.matches(".")) {
+    if (res === "0" && this.matches("x")) {
+        res += "x";
+        res += this.scanWhile(this.isHexadecimal.bind(this));
+    } else if (this.matches(".")) {
         res += ".";
         res += this.scanWhile(this.isNumber.bind(this));
     }
@@ -315,6 +318,10 @@ Tokenizer.prototype.isIdentifierStart = function (c) {
 
 Tokenizer.prototype.isIdentifierContinue = function (c) {
     return this.isIdentifierStart(c) || this.isNumber(c);
+};
+
+Tokenizer.prototype.isHexadecimal = function (c) {
+    return this.isNumber(c) || ("a" <= c && c <= "f") || ("A" <= c && c <= "F");
 };
 
 Tokenizer.prototype.isNumber = function (c) {
