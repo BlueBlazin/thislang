@@ -1913,6 +1913,10 @@ function TLCommonNeq(right, runtime) {
     return this.value !== right.value ? runtime.JSTrue : runtime.JSFalse;
 }
 
+function TLCommonOwnMappedProperty(key) {
+    return false;
+}
+
 //------------------------------------------------------------------
 // Runtime - Environment
 //------------------------------------------------------------------
@@ -2025,7 +2029,6 @@ function JSNumber(shape, proto, value) {
     this.proto = proto;
     this.value = value;
     this.shape = shape;
-    this.mappedValues = {};
 }
 
 JSNumber.prototype.addProperty = function (key, value, writable) {
@@ -2070,6 +2073,7 @@ JSNumber.prototype.leq = TLCommonLeq;
 JSNumber.prototype.gt = TLCommonGt;
 JSNumber.prototype.geq = TLCommonGeq;
 JSNumber.prototype.neq = TLCommonNeq;
+JSNumber.prototype.ownMappedProperty = TLCommonOwnMappedProperty;
 
 //------------------------------------------------------------------
 // Runtime - JSBoolean
@@ -2080,7 +2084,6 @@ function JSBoolean(shape, proto, value) {
     this.proto = proto;
     this.value = value;
     this.shape = shape;
-    this.mappedValues = {};
 }
 
 JSBoolean.prototype.addProperty = function (key, value, writable) {
@@ -2102,6 +2105,7 @@ JSBoolean.prototype.leq = TLCommonLeq;
 JSBoolean.prototype.gt = TLCommonGt;
 JSBoolean.prototype.geq = TLCommonGeq;
 JSBoolean.prototype.neq = TLCommonNeq;
+JSBoolean.prototype.ownMappedProperty = TLCommonOwnMappedProperty;
 
 //------------------------------------------------------------------
 // Runtime - JSString
@@ -2137,6 +2141,7 @@ JSString.prototype.leq = TLCommonLeq;
 JSString.prototype.gt = TLCommonGt;
 JSString.prototype.geq = TLCommonGeq;
 JSString.prototype.neq = TLCommonNeq;
+JSString.prototype.ownMappedProperty = JSObject.prototype.ownMappedProperty;
 
 //------------------------------------------------------------------
 // Runtime - JSArray
@@ -2417,7 +2422,43 @@ function Runtime() {
     this.JSStringPrototype = new JSString(
         this.emptyObjectShape,
         this.JSObjectPrototype,
-        ""
+        "",
+        0
+    );
+
+    this.JSStringPrototype.mappedValues["padStart"] = this.newNativeFunction(
+        "padStart",
+        2,
+        function (vm, args, thisObj) {
+            if (args[0].type !== JSType.NUMBER) {
+                vm.panic("Target length must be a number");
+            }
+
+            let targetLength = args[0].value;
+            let padString =
+                args[1] === vm.runtime.JSUndefined ? " " : toString(args[1]);
+
+            return vm.runtime.newString(
+                thisObj.value.padStart(targetLength, padString)
+            );
+        }
+    );
+
+    this.JSStringPrototype.mappedValues["includes"] = this.newNativeFunction(
+        "includes",
+        2,
+        function (vm, args, thisObj) {
+            if (args[0].type === JSType.UNDEFINED) {
+                return vm.runtime.JSFalse;
+            }
+
+            let searchString = toString(args[0]);
+            let start = args[1].type !== JSType.NUMBER ? 0 : args[1].value;
+
+            return thisObj.value.includes(searchString, start)
+                ? vm.runtime.JSTrue
+                : vm.runtime.JSFalse;
+        }
     );
 
     //---------------------------------------------
