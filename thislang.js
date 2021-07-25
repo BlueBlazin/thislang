@@ -2504,6 +2504,8 @@ function Runtime() {
             return vm.runtime.newBoundFunction(fun, thisObj.proto);
         })
     );
+
+    // TODO: Function.prototype.call
 }
 
 Runtime.prototype.newBoundFunction = function (boundVmFunction, proto) {
