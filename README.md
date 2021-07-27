@@ -1,6 +1,8 @@
 # Thislang
 
-![Thislang logo](https://raw.githubusercontent.com/BlueBlazin/thislang/master/thislang-logo.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/thislang-logo.png" width="200" height="200" alt="thislang logo"/>
+</p>
 
 ## About
 
