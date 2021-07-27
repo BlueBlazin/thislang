@@ -1361,7 +1361,10 @@ Parser.prototype.callArguments = function () {
         ) {
             this.advance();
         } else {
-            if (nextToken.value !== ")") {
+            if (
+                nextToken.type === TokenType.PUNCTUATOR &&
+                nextToken.value !== ")"
+            ) {
                 this.panic("Unexpected token " + nextToken.value);
             }
         }
@@ -1758,9 +1761,7 @@ Parser.prototype.nextToken = function () {
 };
 
 Parser.prototype.panic = function (msg) {
-    throw Error(
-        "parser panicked on: " + msg + ". Last line parsed: " + this.line
-    );
+    throw "parser panicked on: " + msg + ". Last line parsed: " + this.line;
 };
 
 //==================================================================
@@ -1891,7 +1892,7 @@ function objectToString(value) {
         case JSObjectType.NATIVE:
             return "[native code]";
         default:
-            throw Error("Unknown type " + value);
+            throw "Unknown type " + value;
     }
 }
 
@@ -3062,7 +3063,11 @@ Compiler.prototype.forStmt = function (ast) {
     // push placeholder on continue stack
     this.continueStack.push(null);
     // compile initializer
-    this.stmtOrDclr(ast.init);
+    if (ast.init.type === AstType.LET_DCLR) {
+        this.letDclr(ast.init);
+    } else {
+        this.expression(ast.init);
+    }
     // record next position for looping
     let loopStart = this.function.code.length;
     // compile test
@@ -3134,7 +3139,7 @@ Compiler.prototype.functionDclr = function (ast) {
     // compile function
     this.functionExpr(ast);
     // add function to environment
-    let index = this.addConstant(name);
+    let index = this.addConstant(this.runtime.newString(name));
     this.emitBytes([Opcodes.SET_FROM_ENV, (index >> 8) & 0xff, index & 0xff]);
     // pop function off the stack
     this.emitByte(Opcodes.POP);
@@ -3172,8 +3177,12 @@ Compiler.prototype.statementList = function (statements) {
 Compiler.prototype.switchStmt = function (ast) {
     // start a new breaks stack
     this.breaksStack.push([]);
+    // declare a dummy variable to hold stack index of the discriminant
+    this.declareLocal("<discriminant>");
     // compile the discriminant
     this.expression(ast.discriminant);
+    // mark pseudo variable ready so it gets popped at the end of scope
+    this.markReady();
 
     let jumpIdxs = [];
 
@@ -3201,10 +3210,10 @@ Compiler.prototype.switchStmt = function (ast) {
         this.statementList(ast.cases[i].consequent);
     }
 
-    // pop the discriminant
-    this.emitByte(Opcodes.POP);
     // patch breaks
     this.patchBreaks();
+    // // pop the discriminant
+    // this.emitByte(Opcodes.POP);
 };
 
 Compiler.prototype.letDclr = function (ast) {
@@ -3665,7 +3674,7 @@ Compiler.prototype.getOrSetId = function (name, getOp) {
         }
     } else {
         // global variable
-        idx = this.addConstant(name);
+        idx = this.addConstant(this.runtime.newString(name));
         // dynamically resolved env variable
         if (getOp) {
             this.emitBytes([
@@ -3772,7 +3781,7 @@ Compiler.prototype.array = function (ast) {
     }
 
     // add numElements to constant table
-    let index = this.addConstant(numElements);
+    let index = this.addConstant(this.runtime.newNumber(numElements));
     // emit opcode to create the array
     this.emitBytes([Opcodes.NEW_ARRAY, (index >> 8) & 0xff, index & 0xff]);
 };
@@ -3795,7 +3804,7 @@ Compiler.prototype.object = function (ast) {
     }
 
     // add numProperties to constant table
-    let index = this.addConstant(numProperties);
+    let index = this.addConstant(this.runtime.newNumber(numProperties));
     // emit opcode to create the object
     this.emitBytes([Opcodes.NEW_OBJECT, (index >> 8) & 0xff, index & 0xff]);
 };
@@ -3979,7 +3988,7 @@ Compiler.prototype.endScope = function () {
 };
 
 Compiler.prototype.panic = function (msg) {
-    throw Error("compiler panicked on: " + msg);
+    throw "compiler panicked on: " + msg;
 };
 
 //------------------------------------------------------------------
@@ -4585,7 +4594,7 @@ Vm.prototype.popTryCatch = function () {
 };
 
 Vm.prototype.pushTryCatch = function () {
-    let jump = (this.fetch() << 8) | this.fetch();
+    let jump = this.fetch16();
     let catchIp = this.currentFrame.ip + jump;
 
     this.currentFrame.tryStack.push({ ip: catchIp, sp: this.sp });
@@ -4754,14 +4763,14 @@ Vm.prototype.getUpvar = function () {
 };
 
 Vm.prototype.setFromEnv = function () {
-    let id = this.fetchConstant();
+    let id = this.fetchConstant().value;
     let value = this.peek();
 
     this.currentFrame.env.add(id, value);
 };
 
 Vm.prototype.getFromEnv = function () {
-    let id = this.fetchConstant();
+    let id = this.fetchConstant().value;
     let value = this.currentFrame.env.get(id);
 
     if (value !== null) {
@@ -5112,7 +5121,7 @@ Vm.prototype.getLocal = function () {
 };
 
 Vm.prototype.jump = function (condition, unconditional) {
-    let jump = (this.fetch() << 8) | this.fetch();
+    let jump = this.fetch16();
 
     if (unconditional || this.isTruthy(this.pop()) === condition) {
         this.currentFrame.ip += jump;
@@ -5242,6 +5251,11 @@ Vm.prototype.cachedSet = function (object, value) {
     let shape = object.shape;
     // fetch id, shape index, and offset
     let id = this.fetchConstant().value;
+
+    if (shape === undefined) {
+        this.panic("Cannot read property '" + id + "' of " + toString(object));
+    }
+
     let cacheIdx = this.fetch();
     let cacheOffset = this.fetch();
 
@@ -5272,6 +5286,11 @@ Vm.prototype.cachedGet = function (object) {
     let shape = object.shape;
     // fetch id, shape index, and offset
     let id = this.fetchConstant().value;
+
+    if (shape === undefined) {
+        this.panic("Cannot read property '" + id + "' of " + toString(object));
+    }
+
     let cacheIdx = this.fetch();
     let cacheOffset = this.fetch();
 
@@ -5331,7 +5350,7 @@ Vm.prototype.modifyCodeForIC = function (cacheIdx, cacheOffset) {
 };
 
 Vm.prototype.newArray = function () {
-    let numElements = this.fetchConstant();
+    let numElements = this.fetchConstant().value;
     let elements = [];
 
     for (let i = 0; i < numElements; i++) {
@@ -5342,11 +5361,12 @@ Vm.prototype.newArray = function () {
 };
 
 Vm.prototype.newObject = function () {
-    let numProperties = this.fetchConstant();
+    let numProperties = this.fetchConstant().value;
 
     let object = this.runtime.newEmptyObject();
 
-    let key, value;
+    let key;
+    let value;
     for (let i = 0; i < numProperties; i++) {
         key = this.pop();
         value = this.pop();
@@ -5438,7 +5458,9 @@ Vm.prototype.fetchConstant = function () {
 };
 
 Vm.prototype.fetch16 = function () {
-    return (this.fetch() << 8) | this.fetch();
+    let bigEnd = this.fetch();
+    let littleEnd = this.fetch();
+    return (bigEnd << 8) | littleEnd;
 };
 
 Vm.prototype.fetch = function () {
@@ -5464,7 +5486,7 @@ Vm.prototype.stackTrace = function (value, trace) {
 /** Panic */
 Vm.prototype.panic = function (msg) {
     this.panicTrace();
-    throw Error(msg);
+    throw msg;
 };
 
 Vm.prototype.peek = function () {
