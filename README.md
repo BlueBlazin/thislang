@@ -14,7 +14,7 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
 https://blueblazin.github.io/thislang/
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/screenshot.png" width="700" height="350" alt="webapp screenshot"/>
+  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/screenshot.png" width="750" height="375" alt="webapp screenshot"/>
 </p>
 
 ## Features
