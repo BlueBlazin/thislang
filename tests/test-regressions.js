@@ -63,3 +63,15 @@ test("spread arg in calls made from functions", () => {
         bar();
     `);
 });
+
+test("array.map on function that calls native function", () => {
+    runCode(`
+        function foo(x) {
+            return String(x);
+        }
+
+        let x = [7, 8].map(foo);
+        assert(x[0] === "7");
+        assert(x[0] === "7");
+    `);
+});

@@ -4873,6 +4873,8 @@ Vm.prototype.callConstructor = function callConstructor(numArgs) {
         this.sp = idx - 1;
         // push the return value on top of stack
         this.push(result);
+        // pop singleRunStack
+        this.singleRunStack.pop();
     } else {
         this.panic("Value not a constructor.");
     }
@@ -4927,6 +4929,8 @@ Vm.prototype.callMethod = function callMethod(numArgs) {
         this.sp = idx - 1;
         // push the return value on top of stack
         this.push(result);
+        // pop singleRunStack
+        this.singleRunStack.pop();
     } else {
         this.panic("Value not callable.");
     }
@@ -4982,6 +4986,8 @@ Vm.prototype.callFunction = function callFunction(numArgs) {
         this.sp = idx - 1;
         // push the return value on top of stack
         this.push(result);
+        // pop singleRunStack
+        this.singleRunStack.pop();
     } else {
         this.panic("Value not callable.");
     }
