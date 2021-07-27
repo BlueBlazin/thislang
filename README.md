@@ -59,3 +59,11 @@ Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happ
 For a while after first learning Javascript, I struggled with understanding/remembering how `this` worked in JS. A couple years ago I thoguht why not rewrite javascript (or rather a subset of it) to get a better understanding of `this`.
 
 To my own surprise, I actually did it. Of course, you don't need to implement javascript to understand how `this` works but it was a convenient excuse to convince myself to do it.
+
+## Further Improvements
+
+The shape system of thislang is a (potentially) massive tree data structure. Whenever an object is created with properties, or a property is added to an object, this tree is walked from its root in order of the property names as they appear on the object.
+
+Thislang will create shapes for all properties and share them whenever it can. However, because the structure holding them is a tree, all shapes are retained in memory. Even those shapes whose originating objects no longer exist.
+
+One way to resolve this issue is to implement a small mark-and-sweep garbage collector that will periodically free up shapes which are no longer pointed to by any object. I might implement this in the future.
