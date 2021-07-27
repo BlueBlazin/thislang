@@ -5547,12 +5547,6 @@ Vm.prototype.fetch = function fetch() {
     return this.currentFun.code[this.currentFrame.ip++];
 };
 
-Vm.prototype.panicTrace = function panicTrace() {
-    while (this.frames.length > 0) {
-        console.error("at " + this.frames.pop().fun.name);
-    }
-};
-
 Vm.prototype.stackTrace = function stackTrace(value, trace) {
     let lines = [asString(value)];
 
@@ -5565,8 +5559,13 @@ Vm.prototype.stackTrace = function stackTrace(value, trace) {
 
 /** Panic */
 Vm.prototype.panic = function panic(msg) {
-    this.panicTrace();
-    throw msg;
+    let lines = [msg];
+
+    while (this.frames.length > 0) {
+        lines.push("    at: " + this.frames.pop().fun.name);
+    }
+
+    throw lines.join("\n");
 };
 
 Vm.prototype.peek = function peek() {
