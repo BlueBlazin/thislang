@@ -13,6 +13,10 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
 **All output is logged to console**. So to use thislang you'll need to open up the console in your browser.
 https://blueblazin.github.io/thislang/
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/screenshot.png" width="700" height="350" alt="webapp screenshot"/>
+</p>
+
 ## Features
 
 - Data types:
