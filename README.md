@@ -70,6 +70,10 @@ Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happ
 - Speed
 - Spec-compliance
 
+## Bugs
+
+There's no doubt a large number of issues/bugs with the implementation. If you spot any, please open up an issue 😄
+
 ## Background
 
 For a while after first learning Javascript, I struggled with understanding/remembering how `this` worked in JS. A couple years ago I thoguht why not rewrite javascript (or rather a subset of it) to get a better understanding of `this`.
