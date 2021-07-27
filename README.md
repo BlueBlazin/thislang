@@ -8,6 +8,11 @@
 
 This-lang (thislang) is an implementation of a subset of Javascript in that subset of Javascript. Yes, it can run itself!
 
+## Usage
+
+**All output is logged to console**. So to use thislang you'll need to open up the console in your browser.
+https://blueblazin.github.io/thislang/
+
 ## Features
 
 - Data types:
