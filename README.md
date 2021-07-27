@@ -10,7 +10,7 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
 
 ## Usage
 
-**All output is logged to console**. So to use thislang you'll need to open up the console in your browser. You can click the Run button to run the code. If you want, you can also explore the outputs from the tokenizer, parser, or compiler.
+**All output is logged to console**. So to use thislang you'll need to open up the console in your browser. Click the Run button to run the code. If you want, you can also explore the outputs from the tokenizer, parser, and compiler.
 
 https://blueblazin.github.io/thislang/
 
