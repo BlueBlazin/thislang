@@ -16,6 +16,7 @@ https://blueblazin.github.io/thislang/
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/screenshot.png" width="750" height="375" alt="webapp screenshot"/>
+  <h6>thislang running thislang running 'hello world'</h6>
 </p>
 
 ## Features

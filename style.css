@@ -78,11 +78,3 @@ body {
   width: 100vw;
   height: calc(100vh - 100px);
 }
-
-/* #console {
-  height: calc(100vh - 100px);
-  width: 450px;
-  background-color: #eee;
-  padding: 20px;
-  box-sizing: border-box;
-} */
