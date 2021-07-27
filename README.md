@@ -59,6 +59,8 @@ Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happ
 3. **Compilation:** The AST gets walked and compiled to bytecode.
 4. **Execution:** The bytecode is executed by the VM.
 
+The file implementation.md details each part of interpreter.
+
 ## Goals:
 
 - Self-hosting Javascript implementation ✅
@@ -69,6 +71,10 @@ Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happ
 
 - Speed
 - Spec-compliance
+
+## Reference
+
+TODO
 
 ## Bugs
 
