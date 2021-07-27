@@ -72,7 +72,9 @@ Tokenizer.prototype.nextToken = function nextToken() {
     } else if (this.isNumber(c)) {
         return this.scanNumber();
     } else if (c === '"' || c === "'") {
-        return this.scanString();
+        return this.scanSinglelineString();
+    } else if (c === "`") {
+        return this.scanMultilineString();
     } else {
         return this.scanPunctuator();
     }
@@ -203,13 +205,26 @@ Tokenizer.prototype.scanPunctuator = function scanPunctuator() {
     }
 };
 
-Tokenizer.prototype.scanString = function scanString() {
-    // record the type of quote used to start the string
+Tokenizer.prototype.scanMultilineString = function scanMultilineString() {
+    // consume backtick
+    this.consume();
+
+    return this.scanString(function (c) {
+        return c === "`";
+    });
+};
+
+Tokenizer.prototype.scanSinglelineString = function scanSinglelineString() {
+    // // record the type of quote used to start the string
     let q = this.consume();
 
-    let res = this.scanUntil(function (c) {
-        return c === q;
+    return this.scanString(function (c) {
+        return c === q || c === "\n";
     });
+};
+
+Tokenizer.prototype.scanString = function scanString(predicate) {
+    let res = this.scanUntil(predicate);
 
     // consume the end quote
     this.consume();
