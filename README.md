@@ -36,7 +36,9 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
 
 ## Implementation
 
-![Thislang logo](https://raw.githubusercontent.com/BlueBlazin/thislang/master/mascot.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/mascot.png" width="400" height="533" alt="orangutan mascot"/>
+</p>
 
 Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happens in four stages.
 
