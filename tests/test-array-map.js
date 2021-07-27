@@ -41,3 +41,13 @@ test("array map index argument", () => {
         assert(arr[2] === 2);
     `);
 });
+
+test("array map with native function", () => {
+    runCode(`
+        let arr = [5, 6, 7];
+        arr = arr.map(String);
+        assert(arr[0] === "5");
+        assert(arr[1] === "6");
+        assert(arr[2] === "7");
+    `);
+});
