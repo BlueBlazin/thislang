@@ -2,11 +2,9 @@
 
 ![Thislang logo](https://raw.githubusercontent.com/BlueBlazin/thislang/master/thislang-logo.png)
 
-**WIP**
-
 ## About
 
-This-lang (thislang) is an implementation of a subset of Javascript in that subset of Javascript.
+This-lang (thislang) is an implementation of a subset of Javascript in that subset of Javascript. Yes, it can run itself!
 
 ## Features
 
@@ -33,6 +31,8 @@ This-lang (thislang) is an implementation of a subset of Javascript in that subs
 - Closures
 - Throw statements
 - Try-catch blocks
+- `call` method on function
+- break and continue
 
 ## Implementation
 
@@ -45,9 +45,9 @@ Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happ
 
 ## Goals:
 
-- Self-hosting Javascript implementation
-- All features listed above
-- Builtins supporting the most common methods (Object.create, array.map, etc.)
+- Self-hosting Javascript implementation ✅
+- All features listed above ✅
+- Builtins supporting the most common methods (Object.create, array.map, etc.) ✅
 
 ## Non-goals:
 
