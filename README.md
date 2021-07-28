@@ -64,13 +64,13 @@ The file [implementation.md] details each part of interpreter.
 
 [implementation.md]: https://github.com/BlueBlazin/thislang/blob/master/implementation.md
 
-## Goals:
+## Goals
 
 - Self-hosting Javascript implementation ✅
 - All features listed above ✅
 - Builtins supporting the most common methods (Object.create, array.map, etc.) ✅
 
-## Non-goals:
+## Non-goals
 
 - Speed
 - Spec-compliance
@@ -91,8 +91,14 @@ To my own surprise, I actually did it. Of course, you don't need to implement ja
 
 ## Further Improvements
 
+### 1. Removing dead shapes
+
 The shape system of thislang is a (potentially) massive tree data structure. Whenever an object is created with properties, or a property is added to an object, this tree is walked from its root in order of the property names as they appear on the object.
 
 Thislang will create shapes for all properties and share them whenever it can. However, because the structure holding them is a tree, all shapes are retained in memory. Even those shapes whose originating objects no longer exist.
 
 One way to resolve this issue is to implement a small mark-and-sweep garbage collector that will periodically free up shapes which are no longer pointed to by any object. I might implement this in the future.
+
+### 2. Better error reporting
+
+The other main improvement is better error reporting. Currently line numbers aren't printed for runtime errors. So recording that alongside bytecode and outputting it is needed. This is a priority and I intend to implement it in the near future.
