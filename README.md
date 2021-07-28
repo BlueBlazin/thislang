@@ -47,6 +47,7 @@ https://blueblazin.github.io/thislang/
 - `call` method on function
 - break and continue
 - spread arguments to function calls (only the last argument)
+- Multiline strings using backticks
 
 ## Implementation
 
@@ -97,7 +98,8 @@ NOTE: the implementations are roughly similar to their JS equivalents.
 1. Arrow functions
 2. Object and Array destructuring
 3. Class syntax
-4. ...and lots more
+4. Template strings
+5. ...and lots more
 
 ## Bugs
 
