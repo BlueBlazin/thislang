@@ -46,7 +46,7 @@ https://blueblazin.github.io/thislang/
 - Try-catch blocks
 - `call` method on function
 - break and continue
-- spread arguments to function calls
+- spread arguments to function calls (only the last argument)
 
 ## Implementation
 
@@ -97,7 +97,7 @@ NOTE: the implementations are roughly similar to their JS equivalents.
 1. Arrow functions
 2. Object and Array destructuring
 3. Class syntax
-4. and lots more
+4. ...and lots more
 
 ## Bugs
 
