@@ -1,7 +1,7 @@
 # Implementation of Thislang
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/mascot.png" width="550" height="732" alt="orangutan mascot"/>
+  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/mascot.png" width="400" height="533" alt="orangutan mascot"/>
 </p>
 
 This document is currently a **work in progress**. I hope to explain the implementation of thislang in some detail so you can write your own if you wish.
