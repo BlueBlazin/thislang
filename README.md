@@ -75,13 +75,25 @@ The file [implementation.md] details each part of interpreter.
 - Speed
 - Spec-compliance
 
-## Reference
+## Implemented builtins
 
-TODO
+1. Object.prototype: `hasOwnProperty`
+2. Array.prototype: `push`, `pop`, `map`, `filter`, `shift`, `unshift`, `slice`, `splice`, `join`
+3. String.prototype: `padStart`, `padEnd`, `includes`
+4. Function.prototype: `bind`, `call`
+5. `<function>.prototype`
+6. `<array>.length`
+7. `<string>.length`
+8. console: `log`, `error`
+9. Object: `getPrototypeOf`, `is`, `create`, `assign`, `keys`
+10. Array: `from`
+11. print: a debug method that logs the `JSObject` instead of its string representation.
+
+NOTE: the implementations are roughly similar to their JS equivalents.
 
 ## Bugs
 
-There's no doubt a large number of issues/bugs with the implementation. If you spot any, please open up an issue 😄
+There's no doubt a large number of issues/bugs with in implementation. If you spot any, please open up an issue 😄
 
 ## Background
 

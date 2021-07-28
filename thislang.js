@@ -2859,6 +2859,8 @@ Runtime.prototype.generateGlobalEnv = function generateGlobalEnv() {
         }
     );
 
+    TLNumber.addProperty("prototype", this.JSNumberPrototype);
+
     env.add("Number", TLNumber);
     //--------------------------------------------------
     // Boolean
@@ -2871,6 +2873,8 @@ Runtime.prototype.generateGlobalEnv = function generateGlobalEnv() {
         }
     );
 
+    TLBoolean.addProperty("prototype", this.JSBooleanPrototype);
+
     env.add("Boolean", TLBoolean);
     //--------------------------------------------------
     // Array
@@ -2882,6 +2886,8 @@ Runtime.prototype.generateGlobalEnv = function generateGlobalEnv() {
             return vm.runtime.newArray(args);
         }
     );
+
+    TLArray.addProperty("prototype", this.JSArrayPrototype);
 
     TLArray.addProperty(
         "from",
@@ -2910,6 +2916,8 @@ Runtime.prototype.generateGlobalEnv = function generateGlobalEnv() {
             }
         }
     );
+
+    TLString.addProperty("prototype", this.JSStringPrototype);
 
     env.add("String", TLString);
 
