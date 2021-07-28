@@ -87,7 +87,7 @@ The file [implementation.md] details each part of interpreter.
 8. console: `log`, `error`
 9. Object: `getPrototypeOf`, `is`, `create`, `assign`, `keys`
 10. Array: `from`
-11. print: a debug method that logs the `JSObject` instead of its string representation.
+11. `print`: a debug method that logs the `JSObject` instead of its string representation.
 
 NOTE: the implementations are roughly similar to their JS equivalents.
 
