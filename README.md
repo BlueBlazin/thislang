@@ -46,6 +46,7 @@ https://blueblazin.github.io/thislang/
 - Try-catch blocks
 - `call` method on function
 - break and continue
+- spread arguments to function calls
 
 ## Implementation
 
@@ -90,6 +91,13 @@ The file [implementation.md] details each part of interpreter.
 11. `print`: a debug method that logs the `JSObject` instead of its string representation.
 
 NOTE: the implementations are roughly similar to their JS equivalents.
+
+## Not implemented
+
+1. Arrow functions
+2. Object and Array destructuring
+3. Class syntax
+4. and lots more
 
 ## Bugs
 
