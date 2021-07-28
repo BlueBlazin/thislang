@@ -8,7 +8,6 @@ let UINT8_MAX = 256 | 0;
 let UINT16_MAX = 65536 | 0;
 let FRAMES_MAX = 64 | 0;
 let STACK_MAX = FRAMES_MAX * UINT8_MAX;
-let MAX_NUM_CONSTANTS = UINT8_MAX;
 
 //==================================================================
 // Helpers
