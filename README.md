@@ -93,7 +93,7 @@ NOTE: the implementations are roughly similar to their JS equivalents.
 
 ## Bugs
 
-There's no doubt a large number of issues/bugs with in implementation. If you spot any, please open up an issue 😄
+There's no doubt a large number of issues/bugs with the implementation. If you spot any, please open up an issue 😄
 
 ## Background
 
