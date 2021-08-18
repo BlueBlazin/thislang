@@ -51,10 +51,6 @@ https://blueblazin.github.io/thislang/
 
 ## Implementation
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/BlueBlazin/thislang/master/mascot.png" width="400" height="533" alt="orangutan mascot"/>
-</p>
-
 Thislang is a stack based bytecode Virtual Machine (VM). The interpretation happens in four stages.
 
 1. **Tokenization:** the source code is broken down into a stream of lexical tokens.
