@@ -2479,6 +2479,19 @@ function Runtime() {
         })
     );
 
+    this.JSArrayPrototype.addProperty(
+        "at",
+        this.newNativeFunction("at", 1, function (vm, args, thisObj) {
+            let index = args[0].value || 0;
+
+            if (index < 0) {
+                index += thisObj.elements.length;
+            }
+
+            return thisObj.elements[index] || vm.runtime.JSUndefined;
+        })
+    );
+
     //---------------------------------------------
     // String prototype
     //---------------------------------------------

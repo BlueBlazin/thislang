@@ -104,3 +104,17 @@ test("array join", () => {
         assert(x.join() === "5,6,7");
     `);
 });
+
+test("array at", () => {
+    runCode(`
+        let x = [5, 6, 7];
+        assert(x.at(0) === 5);
+        assert(x.at(1) === 6);
+        assert(x.at(2) === 7);
+        assert(x.at(3) === undefined);
+        assert(x.at(-1) === 7);
+        assert(x.at(-2) === 6);
+        assert(x.at(-3) === 5);
+        assert(x.at(-4) === undefined);
+    `);
+});
