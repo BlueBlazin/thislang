@@ -4041,7 +4041,7 @@ Compiler.prototype.withFunctionCtx = function withFunctionCtx(
     this.emitReturn();
 
     let newFun = this.function;
-    newFun.unvars = this.upvars;
+    newFun.upvars = this.upvars;
     this.function = fun;
 
     return newFun;

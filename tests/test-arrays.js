@@ -117,4 +117,14 @@ test("array at", () => {
         assert(x.at(-3) === 5);
         assert(x.at(-4) === undefined);
     `);
+
+    runCode(`
+        let x = [5, 6, 7];
+        assert(x.at() === 5);
+    `);
+
+    runCode(`
+        let x = [];
+        assert(x.at() === undefined);
+    `);
 });
