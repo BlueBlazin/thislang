@@ -1843,6 +1843,7 @@ let Opcodes = {
     THROW:              0x35,
     LSHIFT:             0x36,
     RSHIFT:             0x37,
+    DEFINE_GLOBAL:      0x38,
 };
 
 //==================================================================
@@ -3049,6 +3050,8 @@ function Compiler(runtime) {
     this.breaksStack = [];
     // continue stack
     this.continueStack = [];
+    // declared global variables
+    this.globalBindings = [];
 }
 
 Compiler.prototype.compile = function compile(ast) {
@@ -3292,24 +3295,47 @@ Compiler.prototype.switchStmt = function switchStmt(ast) {
 };
 
 Compiler.prototype.letDclr = function letDclr(ast) {
-    // add name to current scope
-    this.declareLocal(ast.id.value);
+    if (this.localsStack.length === 0) {
+        // compile initializer
+        this.letInitializer(ast);
+        this.declareGlobal(ast.id.value);
+    } else {
+        // add name to current scope
+        this.declareLocal(ast.id.value);
+        // compile initializer
+        this.letInitializer(ast);
+        // mark variable ready for access
+        this.markReady();
+    }
+};
 
-    // compile initializer
+Compiler.prototype.letInitializer = function letInitializer(ast) {
     if (ast.init !== null) {
         this.expression(ast.init);
     } else {
         this.emitByte(Opcodes.PUSH_UNDEFINED);
     }
-    // mark variable ready for access
-    this.markReady();
+};
+
+Compiler.prototype.declareGlobal = function declareGlobal(name) {
+    for (let i = this.globalBindings.length - 1; i >= 0; i--) {
+        if (this.globalBindings[i] === name) {
+            this.panic("Identifier " + name + " has already been declared.");
+        }
+    }
+
+    // register binding name
+    this.globalBindings.push(name);
+
+    this.emitPushConstant(name);
+    this.emitByte(Opcodes.DEFINE_GLOBAL);
 };
 
 /**
  * Declares the local variable. Check if name already exists
  * within current scope and if not, add it to current locals array.
  *
- * Thilang deviates from JS here. Let declarations are not
+ * Thislang deviates from JS here. Let declarations are not
  * hoisted and don't have a Temporal Dead Zone (TDZ)
  * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/let#temporal_dead_zone_tdz
  */
@@ -3768,18 +3794,25 @@ Compiler.prototype.getOrSetId = function getOrSetId(name, getOp) {
 };
 
 Compiler.prototype.resolveUpvar = function resolveUpvar(name, upvars, idx) {
-    if (idx < 0) {
+    // there are no upvars if:
+    // 1. immediate outer function is the global <script> function
+    // 2. there is no outer function (current function is global <script> function)
+    if (idx <= 0) {
         return null;
     }
 
+    // local variables in immediate outer function
+    // (this is because idx was localsStack.length - 1)
     let locals = this.localsStack[idx];
     let index = this.resolveLocalWith(name, locals);
 
+    // see if name was found in local vars of immediate/first outer function
     if (index !== null) {
         locals[index].isCaptured = true;
         return this.addUpvar(upvars, index, true);
     }
 
+    // recursively call with locals of next outer function
     index = this.resolveUpvar.call(this, name, this.upvarsStack[idx], idx - 1);
 
     if (index !== null) {
@@ -4383,6 +4416,9 @@ function dis(code, constants, name) {
             case Opcodes.RSHIFT:
                 simpleInstr("RSHIFT", state);
                 break;
+            case Opcodes.DEFINE_GLOBAL:
+                simpleInstr("DEFINE_GLOBAL", state);
+                break;
             default:
                 throw "Unknown opcode";
         }
@@ -4623,6 +4659,9 @@ Vm.prototype.run = function run() {
                 break;
             case Opcodes.RSHIFT:
                 this.rshift();
+                break;
+            case Opcodes.DEFINE_GLOBAL:
+                this.defineGlobal();
                 break;
         }
     }
@@ -5514,6 +5553,13 @@ Vm.prototype.pushThis = function pushThis() {
 Vm.prototype.pushConstant = function pushConstant() {
     let value = this.fetchConstant();
     this.push(value);
+};
+
+Vm.prototype.defineGlobal = function defineGlobal() {
+    let id = this.pop();
+    let value = this.pop();
+
+    this.currentFrame.env.add(id, value);
 };
 
 //------------------------------------------------------------------

@@ -1,6 +1,13 @@
 test("simple global variable access", () => {
     runCode(`
         let x = 42;
+        assert(x === 42);
+        x--;
+        assert(x === 41);
+    `);
+
+    runCode(`
+        let x = 42;
         function foo() {
             x + 1;
         }

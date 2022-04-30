@@ -11,3 +11,17 @@ test("let declaration", () => {
         assert(z === 10);
     `);
 });
+
+test("nested functions", () => {
+    runCode(`
+        function foo() {
+            let x = 0;
+        
+            function bar() {
+                return x + 1;
+            }
+            return bar();
+        }
+        assert(foo() === 1);
+    `);
+});
