@@ -4068,13 +4068,12 @@ Compiler.prototype.withFunctionCtx = function withFunctionCtx(
     compileFn();
 
     this.scopeDepth = scopeDepth;
-    // this.upvars = this.upvarsStack.pop();
     this.locals = this.localsStack.pop();
 
     this.emitReturn();
 
     let newFun = this.function;
-    newFun.upvars = this.upvars;
+    // newFun.upvars = this.upvars;
     this.function = fun;
 
     return newFun;
@@ -5572,7 +5571,7 @@ Vm.prototype.popFrame = function popFrame() {
     let frame = this.frames[this.frames.length - 1];
     this.currentFrame = frame;
     this.currentFun = frame.fun;
-    // close popped functions upvars
+    // close popped function's upvars
     this.closeUpvars(poppedFrame.fp);
     // reset sp
     this.sp = poppedFrame.fp;
