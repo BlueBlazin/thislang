@@ -66,10 +66,17 @@
     ></script>
 
     <script>
+      const initialValue = [
+        `// Open javascript console to view output.`,
+        `// Chrome: Ctrl + Shift + J or ⌥ + ⌘ + J`,
+        `// Firefox: Ctrl + Shift + K or ⌥ + ⌘ + K`,
+        `console.log("Hello, world!");`,
+      ].join("\n");
       const editor = ace.edit("editor");
       editor.setTheme("ace/theme/monokai");
       editor.setOption("wrap", true);
       editor.session.setMode("ace/mode/javascript");
+      editor.session.setValue(initialValue);
     </script>
 
     <script src="thislang.js"></script>

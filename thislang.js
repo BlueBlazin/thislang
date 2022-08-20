@@ -42,7 +42,7 @@ let TokenType = {
 
 function Tokenizer(source) {
     this.i = 0;
-    this.line = 0;
+    this.line = 1;
     this.source = source;
     this.queue = [];
 }
